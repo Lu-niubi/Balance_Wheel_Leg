@@ -35,7 +35,7 @@
 
 #include "zf_common_headfile.h"
 #include "Motor.h"
-
+#include "IMU_Deal.h"
 // 打开新的工程或者工程移动了位置务必执行以下操作
 // 第一步 关闭上面所有打开的文件
 // 第二步 project->clean  等待下方进度条走完
@@ -69,14 +69,41 @@ int main(void)
     debug_init();                       // 调试串口信息初始化
     // 此处编写用户代码 例如外设初始化代码等
     system_delay_init();
+    printf("\r\nSystem Booting...\r\n");
+
+    // -------------------------------------------------------------------------
+    // 2. 硬件外设初始化
+    // -------------------------------------------------------------------------
     
-    // 此处编写用户代码 例如外设初始化代码等
+    // 2.1 IMU 硬件初始化
+    // 如果返回 1 说明失败，卡死在这里等待检查，防止无数据飞车
+    while(imu660ra_init())
+    {
+        printf("\r\nIMU660RA Init Error! Check Wiring.");
+        system_delay_ms(500);
+    }
+    printf("\r\nIMU660RA Hardware OK.");
+
+    // 2.2 电机驱动初始化
+    Motor_Init();
+    printf("\r\nMotor Driver OK.");
+
+    // -------------------------------------------------------------------------
+    // 3. 算法层初始化 (必须在硬件OK后)
+    // -------------------------------------------------------------------------
+
+    // 3.1 IMU 融合算法初始化 (会执行200次采样进行快速收敛，耗时约1秒)
+    printf("\r\nCalibrating IMU... Keep Stationary.");
+    IMU_Fusion_Init();
+    printf("\r\nIMU Calibration Done.");
+    // 3.2 重置 LQR 控制器状态
+    Motor_Reset_State();
+    // -------------------------------------------------------------------------
+    // 4. 开启控制中断 (最后一步)
+    // -------------------------------------------------------------------------
+    pit_ms_init(PIT_CH0, 1);
     while(true)
     {
-
-        printf("left speed:%d, right speed:%d\r\n", motor_value.receive_left_speed_data, motor_value.receive_right_speed_data);
-
-        system_delay_ms(50);
       
       
         // 此处编写需要循环执行的代码

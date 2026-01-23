@@ -1,17 +1,33 @@
 #include "Motor.h"
-#include <string.h> // ç”¨äº memset ç­‰ï¼Œå¦‚æœåº•å±‚æ²¡åŒ…å«çš„è¯
+#include <string.h> 
+#include <math.h> // ĞèÒª fabs, fmax, fmin
 
 //-------------------------------------------------------------------------------------------------------------------
-//  å†…éƒ¨é™æ€å‡½æ•°
+//  LQR ÄâºÏ²ÎÊı (BDS3620, 85gÂÖ×é, R=34mm)
+//-------------------------------------------------------------------------------------------------------------------
+// [ĞŞ¸Äµã]£ºÊ¹ÓÃ MATLAB Éú³ÉµÄ×îĞÂ²ÎÊı
+// ×¢Òâ£ºMATLAB Êä³öÏÔÊ¾ k_x Îª¸ºÖµ£¬k_theta ÎªÕıÖµ£¬ÕâÓÉ LQR Çó½âÆ÷¾ö¶¨£¬±£³ÖÔ­Ñù¼´¿É¡£
+float k_x_poly[4] = {0.000002, -0.000000, 0.000000, -4545.454545};
+float k_v_poly[4] = {11223146.756673, -2518565.657087, 204284.812516, -9309.403979};
+float k_theta_poly[4] = {2085657.222577, -688928.563716, 115088.793536, 14379.960975};
+float k_omega_poly[4] = {-537135.911097, 133183.763695, -7332.475099, 1555.495022};
+
+//-------------------------------------------------------------------------------------------------------------------
+//  ÄÚ²¿±äÁ¿
+//-------------------------------------------------------------------------------------------------------------------
+typedef struct {
+    float x;        // Î»ÒÆ (m)
+    float v;        // ËÙ¶È (m/s)
+    float theta;    // ½Ç¶È (rad)
+    float omega;    // ½ÇËÙ¶È (rad/s)
+} Robot_State_t;
+
+static Robot_State_t robot_state = {0}; 
+
+//-------------------------------------------------------------------------------------------------------------------
+//  ÄÚ²¿¾²Ì¬º¯Êı
 //-------------------------------------------------------------------------------------------------------------------
 
-/**
- * @brief   æ•°å€¼é™å¹…å‡½æ•°
- * @param   val è¾“å…¥å€¼
- * @param   min æœ€å°å€¼
- * @param   max æœ€å¤§å€¼
- * @return  é™å¹…åçš„å€¼
- */
 static int16_t clip_value(int16_t val, int16_t min, int16_t max)
 {
     if (val > max) return max;
@@ -19,43 +35,110 @@ static int16_t clip_value(int16_t val, int16_t min, int16_t max)
     return val;
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  æ¥å£å‡½æ•°å®ç°
-//-------------------------------------------------------------------------------------------------------------------
-
-// 1. ç”µæœºåˆå§‹åŒ–
-void Motor_Init(void)
-{
-    // è°ƒç”¨åº•å±‚çš„ä¸²å£å’Œå‚æ•°åˆå§‹åŒ–
-    small_driver_uart_init();
-    
-    // åˆå§‹åŒ–åï¼Œåº•å±‚é©±åŠ¨ä¼šè‡ªåŠ¨å‘é€ small_driver_get_speed() 
-    // ä»è€Œè®©é©±åŠ¨æ¿å¼€å§‹å‘¨æœŸæ€§å›ä¼ æ•°æ®ï¼Œæ— éœ€åœ¨æ­¤é‡å¤è°ƒç”¨
+// y = ax^3 + bx^2 + cx + d
+static float poly_eval(float* poly, float l) {
+    return poly[0]*l*l*l + poly[1]*l*l + poly[2]*l + poly[3];
 }
 
-// 2. è®¾ç½®ç”µæœºå ç©ºæ¯” (ä¸»è¦å¢åŠ äº†å®‰å…¨é™å¹…)
+static int16_t deadzone_compensate(int16_t pwm_in) {
+    // [µ÷ÊÔÌáÊ¾]£ºBDS3620 ¸ºÔØ±ä´ó(85gÂÖ×Ó)ºó£¬ËÀÇø¿ÉÄÜ»á±ä»¯£¬ÇëÊµ²â¡£
+    // Èç¹û³µÔÚĞ¡½Ç¶ÈÊ±Ö»ÓĞµçÁ÷Éù²»×ª£¬Çë¼Ó´óÕâ¸öÖµ¡£
+    int16_t deadzone = 300; 
+    if (pwm_in > 0) return pwm_in + deadzone;
+    if (pwm_in < 0) return pwm_in - deadzone;
+    return 0;
+}
+
+//-------------------------------------------------------------------------------------------------------------------
+//  ½Ó¿Úº¯ÊıÊµÏÖ
+//-------------------------------------------------------------------------------------------------------------------
+
+void Motor_Init(void)
+{
+    small_driver_uart_init();
+    Motor_Reset_State(); 
+}
+
 void Motor_Set_Duty(int16_t left_duty, int16_t right_duty)
 {
-    int16_t safe_left;
-    int16_t safe_right;
-
-    // è¿›è¡Œé™å¹…å¤„ç†ï¼Œé˜²æ­¢PIDè®¡ç®—è¾“å‡ºè¶…è¿‡é©±åŠ¨æ¿æ¥æ”¶èŒƒå›´ (-10000 ~ 10000)
-    safe_left  = clip_value(left_duty, MOTOR_MIN_DUTY, MOTOR_MAX_DUTY);
-    safe_right = clip_value(right_duty, MOTOR_MIN_DUTY, MOTOR_MAX_DUTY);
-
-    // è°ƒç”¨åº•å±‚å‘é€åè®®
+    int16_t safe_left  = clip_value(left_duty, MOTOR_MIN_DUTY, MOTOR_MAX_DUTY);
+    int16_t safe_right = clip_value(right_duty, MOTOR_MIN_DUTY, MOTOR_MAX_DUTY);
     small_driver_set_duty(safe_left, safe_right);
 }
 
-// 3. è·å–å·¦ç”µæœºé€Ÿåº¦
 int16_t Motor_Get_Left_Speed(void)
 {
-    // ç›´æ¥ä»åº•å±‚æš´éœ²çš„ç»“æ„ä½“ä¸­è¯»å–è§£åŒ…åçš„æ•°æ®
     return motor_value.receive_left_speed_data;
 }
 
-// 4. è·å–å³ç”µæœºé€Ÿåº¦
 int16_t Motor_Get_Right_Speed(void)
 {
     return motor_value.receive_right_speed_data;
+}
+
+void Motor_Reset_State(void)
+{
+    robot_state.x = 0.0f;
+    robot_state.v = 0.0f;
+    robot_state.theta = 0.0f;
+    robot_state.omega = 0.0f;
+    Motor_Set_Duty(0, 0);
+}
+
+// LQR Æ½ºâ¿ØÖÆºËĞÄ
+void Motor_LQR_Balance_Control(float leg_length, float imu_pitch, float imu_gyro)
+{
+    // --- Step 1: ×´Ì¬½âËã ---
+    int16_t speed_L_raw = Motor_Get_Left_Speed();
+    int16_t speed_R_raw = Motor_Get_Right_Speed();
+    
+    // ×ª»»ÎªÏßËÙ¶È (m/s) = (RPM / 60) * 2 * PI * r
+    float speed_L_ms = (speed_L_raw / 60.0f) * 2 * 3.14159f * WHEEL_RADIUS;
+    float speed_R_ms = (speed_R_raw / 60.0f) * 2 * 3.14159f * WHEEL_RADIUS;
+    float v_avg = (speed_L_ms + speed_R_ms) / 2.0f;
+    
+    robot_state.v = v_avg;
+    robot_state.x += robot_state.v * CONTROL_DT; 
+    robot_state.theta = imu_pitch; 
+    robot_state.omega = imu_gyro;
+
+    // --- Step 2: µ¹µØ±£»¤ ---
+    // ½Ç¶È¹ı´ó (Ô¼70¶È1.22/45¶È0.8) Í£»ú
+    if (fabs(imu_pitch) > 1.22f) {
+        Motor_Set_Duty(0, 0);
+        robot_state.x = 0; 
+        small_driver_get_speed(); 
+        return;
+    }
+
+    // --- Step 3: ÔöÒæµ÷¶È (¼ÆËã K) ---
+    // [ĞŞ¸Äµã]£ºÏŞÖÆ·¶Î§±ØĞëÆ¥Åä MATLAB µÄ¼ÆËã·¶Î§ (0.03 ~ 0.08)
+    // Èç¹û³¬³öÕâ¸ö·¶Î§£¬¶àÏîÊ½ÄâºÏ»á·¢É¢£¬Ëã³ö¼«ÆäÀëÆ×µÄ K Öµµ¼ÖÂ·É³µ
+    float l_safe = leg_length;
+    if(l_safe < 0.03f) l_safe = 0.03f; // ×îĞ¡Öµ 3cm
+    if(l_safe > 0.08f) l_safe = 0.08f; // ×î´óÖµ 8cm
+
+    float k_x     = poly_eval(k_x_poly, l_safe);
+    float k_v     = poly_eval(k_v_poly, l_safe);
+    float k_theta = poly_eval(k_theta_poly, l_safe);
+    float k_omega = poly_eval(k_omega_poly, l_safe);
+
+    // --- Step 4: LQR Êä³ö¼ÆËã ---
+    // u = -K * x
+    // [¼«ĞÔ¼ì²éÖØÒªÌáÊ¾]£º
+    // Èç¹û³µ×ÓÍùµ¹ÏÂµÄ·½Ïò¼ÓËÙ£¨±ÈÈçÇ°ÇãÊ±ÂÖ×ÓÍùºó×ª£¬»òÕßÇ°ÇãÊ±ÂÖ×ÓÃÍ³åµ¼ÖÂ·É³öÈ¥£©£¬
+    // ÇëÈ¥µôÏÂÃæµÄ¸ººÅ£¬¸ÄÎª float pwm_out_float = (...);
+    float pwm_out_float = -(k_x * robot_state.x + 
+                            k_v * robot_state.v + 
+                            k_theta * robot_state.theta + 
+                            k_omega * robot_state.omega);
+
+    // --- Step 5: ËÀÇøÓëÊä³ö ---
+    int16_t pwm_final = (int16_t)pwm_out_float;
+    pwm_final = deadzone_compensate(pwm_final);
+    
+    Motor_Set_Duty(pwm_final, pwm_final);
+
+    // --- Step 6: ±£³ÖÊı¾İÁ´Â· ---
+    small_driver_get_speed(); 
 }

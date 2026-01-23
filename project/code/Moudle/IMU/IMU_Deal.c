@@ -3,265 +3,159 @@
 
 imu_fusion_t imu_sys;
 
-// PçŸ©é˜µ (åæ–¹å·®çŸ©é˜µ) çš„å¯¹è§’çº¿å…ƒç´ ï¼Œç”¨äºç®€åŒ–è®¡ç®—
-// å®Œæ•´çš„PçŸ©é˜µæ˜¯4x4ï¼Œè¿™é‡Œä¸ºäº†æ€§èƒ½ï¼Œå‡è®¾éå¯¹è§’é¡¹å½±å“è¾ƒå°æˆ–åŠ¨æ€æ”¶æ•›
-static float P[4] = {100.0f, 100.0f, 100.0f, 100.0f};
+// ÄÚ²¿Ê¹ÓÃµÄ¶¯Ì¬²ÎÊı
+static float safe_Kp = KP_NORMAL;
+static float safe_Ki = KI_NORMAL;
+
+// ¿ìËÙÆ½·½¸ùµ¹Êı (¾­µäËã·¨£¬ÓÃÓÚ¹éÒ»»¯)
+static float InvSqrt(float x) {
+    if (x <= 0) return 0;
+    float halfx = 0.5f * x;
+    float y = x;
+    long i = *(long*)&y;
+    i = 0x5f3759df - (i >> 1);
+    y = *(float*)&i;
+    y = y * (1.5f - (halfx * y * y));
+    return y;
+}
 
 //==============================================================================
-// å†…éƒ¨å‡½æ•°å£°æ˜
-//==============================================================================
-static void IMU_Calibrate_Offset(void);
-static void IMU_PreProcess(void);
-static void EKF_Predict(float gx, float gy, float gz);
-static void EKF_Correct(float ax, float ay, float az);
-static void Quaternion_To_Euler(void);
-static float InvSqrt(float x);
-
-//==============================================================================
-// 1. åˆå§‹åŒ–
+// 1. ³õÊ¼»¯ (ÈÚºÏÁËÄãµÄ¿ìËÙÊÕÁ²Ë¼Â·)
 //==============================================================================
 void IMU_Fusion_Init(void)
 {
-    // ç¡¬ä»¶åˆå§‹åŒ–
-    imu660ra_init();
-    
-    // æ•°æ®å¤ä½
-    imu_sys.q[0] = 1.0f; 
-    imu_sys.q[1] = 0.0f; 
-    imu_sys.q[2] = 0.0f; 
-    imu_sys.q[3] = 0.0f;
-    imu_sys.yaw = 0.0f;
-    imu_sys.pitch = 0.0f;
-    imu_sys.roll = 0.0f;
+    // 1. ³õÊ¼»¯ËÄÔªÊı
+    imu_sys.q0 = 1.0f; imu_sys.q1 = 0.0f; imu_sys.q2 = 0.0f; imu_sys.q3 = 0.0f;
+    imu_sys.exInt = 0.0f; imu_sys.eyInt = 0.0f; imu_sys.ezInt = 0.0f;
     imu_sys.is_ready = 0;
 
-    // å¯åŠ¨æ ¡å‡†
-    IMU_Calibrate_Offset();
-    
+    // 2. [¹Ø¼ü²½Öè] ¿ìËÙÊÕÁ²
+    // ÔÚ¿ª»úµÄÇ° 200 ´ÎÑ­»·ÖĞ£¬Ê¹ÓÃ¼«´óµÄ Kp£¬ÈÃ×ËÌ¬Ë²¼ä¶ÔÆëÖØÁ¦·½Ïò
+    // ÕâÑùÄã¾Í²»ÓÃÉµµÈ¼¸ÃëÖÓÈÃÊı¾İÎÈ¶¨ÁË
+    safe_Kp = KP_INIT; 
+    safe_Ki = 0.0f; // ³õÊ¼»¯Ê±²»»ı·Ö£¬·ÀÖ¹°Ñ³õÊ¼Îó²î»ı½øÈ¥
+
+    for(int i = 0; i < 200; i++)
+    {
+        // ÕâÀï¼ÙÉèµ×²ãÇı¶¯ÓĞ×èÈûÑÓÊ±£¬»òÕßÅÜµÃ×ã¹»¿ì
+        // ±ØĞëÔÚÕâÀï¶ÁÊı¾İ£¬·ñÔò Update ËãµÄÊÇ¾ÉÊı¾İ
+        imu660ra_get_acc(); 
+        imu660ra_get_gyro(); 
+        IMU_Fusion_Update();
+        // system_delay_ms(1); // Èç¹ûĞèÒªµÄ»°
+    }
+
+    // 3. »Ö¸´Õı³£²ÎÊı
+    safe_Kp = KP_NORMAL;
+    safe_Ki = KI_NORMAL;
     imu_sys.is_ready = 1;
 }
 
-// é›¶åæ ¡å‡† (æ¥è‡ªæ–¹æ¡ˆ1çš„ä¼˜ç‚¹)
-static void IMU_Calibrate_Offset(void)
-{
-    float gx_sum = 0, gy_sum = 0, gz_sum = 0;
-    
-    // ç®€å•é¢„çƒ­
-     system_delay_ms(200);
-
-    for(int i = 0; i < GYRO_OFFSET_COUNT; i++)
-    {
-        imu660ra_get_gyro();
-        gx_sum += imu660ra_gyro_x;
-        gy_sum += imu660ra_gyro_y;
-        gz_sum += imu660ra_gyro_z;
-        // systick_delay_ms(2);
-    }
-
-    imu_sys.gyro_x_offset = gx_sum / (float)GYRO_OFFSET_COUNT;
-    imu_sys.gyro_y_offset = gy_sum / (float)GYRO_OFFSET_COUNT;
-    imu_sys.gyro_z_offset = gz_sum / (float)GYRO_OFFSET_COUNT;
-}
-
 //==============================================================================
-// 2. æ•°æ®é¢„å¤„ç† (èåˆäº†æ–¹æ¡ˆ1çš„ Smart Yaw å’Œæ»¤æ³¢)
-//==============================================================================
-static void IMU_PreProcess(void)
-{
-    // --- 1. è¯»å–ç¡¬ä»¶æ•°æ® ---
-    imu660ra_get_acc();
-    imu660ra_get_gyro();
-
-    // --- 2. é™€èºä»ªå¤„ç† & é›¶åå»é™¤ & å•ä½è½¬æ¢ ---
-    // å‡è®¾ 16.4 LSB/(deg/s) -> 2000dps
-    float raw_gx = ((float)imu660ra_gyro_x - imu_sys.gyro_x_offset) / 16.4f * (PI / 180.0f);
-    float raw_gy = ((float)imu660ra_gyro_y - imu_sys.gyro_y_offset) / 16.4f * (PI / 180.0f);
-    float raw_gz = ((float)imu660ra_gyro_z - imu_sys.gyro_z_offset) / 16.4f * (PI / 180.0f);
-
-    // --- 3. [å…³é”®] æ™ºèƒ½ Yaw è½´é˜²æ¼‚ç§» (Smart Yaw) ---
-    // è¿™æ˜¯ä½ æ–¹æ¡ˆ1ä¸­æœ€å€¼é’±çš„éƒ¨åˆ†ï¼Œç§»æ¤åˆ°è¿™é‡Œ
-    if (fabsf(raw_gz) < YAW_DEADZONE)
-    {
-        imu_sys.yaw_stable_count++;
-        // å¦‚æœè¿ç»­Næ¬¡é™æ­¢ï¼Œåˆ™å½»åº•é”æ­» Z è½´è¾“å…¥
-        if (imu_sys.yaw_stable_count >= YAW_LOCK_COUNT)
-        {
-            raw_gz = 0.0f; // å¼ºåˆ¶ç½®é›¶ï¼ŒEKF å°±ä¸ä¼šæ›´æ–° Yaw è§’åº¦
-            if(imu_sys.yaw_stable_count > 200) imu_sys.yaw_stable_count = 200; // é˜²æ­¢æº¢å‡º
-        }
-    }
-    else
-    {
-        imu_sys.yaw_stable_count = 0; // ä¸€æ—¦åŠ¨äº†ï¼Œç«‹å³è§£é”
-    }
-
-    // èµ‹å€¼ç»™å…¨å±€
-    imu_sys.gyro_x = raw_gx;
-    imu_sys.gyro_y = raw_gy;
-    imu_sys.gyro_z = raw_gz;
-
-    // --- 4. åŠ é€Ÿåº¦è®¡å¤„ç† & æ»¤æ³¢ ---
-    // å‡è®¾ 4096 LSB/g -> 8g
-    float raw_ax = (float)imu660ra_acc_x * (8.0f / 4096.0f);
-    float raw_ay = (float)imu660ra_acc_y * (8.0f / 4096.0f);
-    float raw_az = (float)imu660ra_acc_z * (8.0f / 4096.0f);
-
-    // ä½é€šæ»¤æ³¢
-    imu_sys.acc_x = raw_ax * ACC_LPF_ALPHA + imu_sys.acc_x * (1.0f - ACC_LPF_ALPHA);
-    imu_sys.acc_y = raw_ay * ACC_LPF_ALPHA + imu_sys.acc_y * (1.0f - ACC_LPF_ALPHA);
-    imu_sys.acc_z = raw_az * ACC_LPF_ALPHA + imu_sys.acc_z * (1.0f - ACC_LPF_ALPHA);
-    
-    // å½’ä¸€åŒ–åŠ é€Ÿåº¦ (EKFéœ€è¦å•ä½å‘é‡)
-    float norm = InvSqrt(imu_sys.acc_x * imu_sys.acc_x + imu_sys.acc_y * imu_sys.acc_y + imu_sys.acc_z * imu_sys.acc_z);
-    if(norm > 0.0f)
-    {
-        imu_sys.acc_x *= norm;
-        imu_sys.acc_y *= norm;
-        imu_sys.acc_z *= norm;
-    }
-}
-
-//==============================================================================
-// 3. EKF æ ¸å¿ƒç®—æ³• 
-//==============================================================================
-static void EKF_Predict(float gx, float gy, float gz)
-{
-    float q0 = imu_sys.q[0], q1 = imu_sys.q[1], q2 = imu_sys.q[2], q3 = imu_sys.q[3];
-    float halfT = FUSION_DT * 0.5f;
-
-    // 1. çŠ¶æ€è½¬ç§» (åŸºäºé™€èºä»ªç§¯åˆ†) X = F * X
-    // ä½¿ç”¨å››å…ƒæ•°å¾®åˆ†æ–¹ç¨‹ q_dot = 0.5 * q * omega
-    float q0_new = q0 + (-q1*gx - q2*gy - q3*gz) * halfT;
-    float q1_new = q1 + ( q0*gx - q3*gy + q2*gz) * halfT;
-    float q2_new = q2 + ( q3*gx + q0*gy - q1*gz) * halfT;
-    float q3_new = q3 + (-q2*gx + q1*gy + q0*gz) * halfT;
-
-    // å½’ä¸€åŒ–å››å…ƒæ•°
-    float norm = InvSqrt(q0_new*q0_new + q1_new*q1_new + q2_new*q2_new + q3_new*q3_new);
-    imu_sys.q[0] = q0_new * norm;
-    imu_sys.q[1] = q1_new * norm;
-    imu_sys.q[2] = q2_new * norm;
-    imu_sys.q[3] = q3_new * norm;
-
-    // 2. åæ–¹å·®é¢„æµ‹ P = F*P*F^T + Q
-    // ä¸ºäº†æ€§èƒ½ï¼Œç®€åŒ–ä¸ºå¯¹è§’çŸ©é˜µæ›´æ–° + è¿‡ç¨‹å™ªå£°ç´¯åŠ 
-    P[0] += Q_PROCESS;
-    P[1] += Q_PROCESS;
-    P[2] += Q_PROCESS;
-    P[3] += Q_PROCESS;
-}
-
-static void EKF_Correct(float ax, float ay, float az)
-{
-    float q0 = imu_sys.q[0], q1 = imu_sys.q[1], q2 = imu_sys.q[2], q3 = imu_sys.q[3];
-
-    // 1. é¢„æµ‹é‡åŠ›å‘é‡ (å°†é‡åŠ›[0,0,1]ä»åœ°ç†ç³»è½¬åˆ°æœºä½“ç³») h(x)
-    // è¿™æ˜¯å››å…ƒæ•°æ—‹è½¬çŸ©é˜µçš„ç¬¬ä¸‰åˆ—
-    float vx = 2.0f * (q1*q3 - q0*q2);
-    float vy = 2.0f * (q0*q1 + q2*q3);
-    float vz = q0*q0 - q1*q1 - q2*q2 + q3*q3;
-
-    // 2. è®¡ç®—æ®‹å·® (è§‚æµ‹å€¼ - é¢„æµ‹å€¼) error
-    float ex = ax - vx;
-    float ey = ay - vy;
-    float ez = az - vz;
-
-    // [å…³é”®] æ–¹æ¡ˆ2çš„æŠ—å¹²æ‰°æ£€æµ‹ï¼šå¦‚æœæ®‹å·®å¤ªå¤§ï¼Œè¯´æ˜åŠ é€Ÿåº¦è®¡ä¸å¯ä¿¡(éœ‡åŠ¨æˆ–éé‡åŠ›åŠ é€Ÿåº¦)
-    // è®¡ç®—æ®‹å·®çš„å¹³æ–¹å’Œ
-    float error_sq = ex*ex + ey*ey + ez*ez;
-    if(error_sq > MAX_ACC_ERR) 
-    {
-        return; // æ”¾å¼ƒè¿™æ¬¡åŠ é€Ÿåº¦ä¿®æ­£ï¼Œä»…ä¿ç•™é™€èºä»ªæ•°æ®
-    }
-
-    // 3. è®¡ç®—å¡å°”æ›¼å¢ç›Š K = P * H^T / (H*P*H^T + R)
-    // è¿™æ˜¯ä¸€ä¸ªç®€åŒ–ç‰ˆå¢ç›Šè®¡ç®—ï¼Œé¿å…4x4çŸ©é˜µæ±‚é€†ï¼Œç±»ä¼¼äº’è¡¥æ»¤æ³¢çš„æƒé‡åŠ¨æ€è°ƒæ•´
-    // ä½†ä¿ç•™äº†EKFåˆ©ç”¨PçŸ©é˜µæ”¶æ•›çš„ç‰¹æ€§
-    
-    // è¿™é‡Œä½¿ç”¨ç®€åŒ–æ¢¯åº¦ä¸‹é™æ–¹å‘ä½œä¸ºæ›´æ–°æ–¹å‘(ç±»ä¼¼Mahony)ï¼Œä½†ç”¨EKFçš„P/Rè°ƒæ•´æ­¥é•¿
-    // è¿™ç§åšæ³•åœ¨åµŒå…¥å¼éå¸¸æµè¡Œ (å¦‚ Ardupilot/Betaflight)
-    float K = 0.0f;
-    // ç®€å•è¿‘ä¼¼ï¼šä¿¡å™ªæ¯” P / (P+R)
-    // è¿™é‡Œçš„På–å¹³å‡å€¼ä½œä¸ºæ•´ä½“ä¸ç¡®å®šåº¦
-    float P_avg = (P[0] + P[1] + P[2] + P[3]) * 0.25f;
-    K = P_avg / (P_avg + R_MEASURE);
-
-    // 4. æ›´æ–°çŠ¶æ€ X = X + K * error
-    // å°†é‡åŠ›è¯¯å·®è½¬æ¢åˆ°å››å…ƒæ•°å˜åŒ–ç‡
-    float g_err_x = (ay*vz - az*vy);
-    float g_err_y = (az*vx - ax*vz);
-    float g_err_z = (ax*vy - ay*vx);
-
-    // å››å…ƒæ•°æ ¡æ­£
-    // q_dot_corr = 0.5 * q * error_vector
-    float t0 = (-q1*g_err_x - q2*g_err_y - q3*g_err_z) * K;
-    float t1 = ( q0*g_err_x - q3*g_err_y + q2*g_err_z) * K;
-    float t2 = ( q3*g_err_x + q0*g_err_y - q1*g_err_z) * K;
-    float t3 = (-q2*g_err_x + q1*g_err_y + q0*g_err_z) * K;
-
-    imu_sys.q[0] += t0;
-    imu_sys.q[1] += t1;
-    imu_sys.q[2] += t2;
-    imu_sys.q[3] += t3;
-
-    // å½’ä¸€åŒ–
-    float norm = InvSqrt(imu_sys.q[0]*imu_sys.q[0] + imu_sys.q[1]*imu_sys.q[1] + imu_sys.q[2]*imu_sys.q[2] + imu_sys.q[3]*imu_sys.q[3]);
-    imu_sys.q[0] *= norm;
-    imu_sys.q[1] *= norm;
-    imu_sys.q[2] *= norm;
-    imu_sys.q[3] *= norm;
-
-    // 5. æ›´æ–° P (P = (I - KH)P)
-    // ç®€å•æ”¶æ•›
-    P[0] -= K * P[0];
-    P[1] -= K * P[1];
-    P[2] -= K * P[2];
-    P[3] -= K * P[3];
-}
-
-//==============================================================================
-// 4. è¾“å‡ºè½¬æ¢
-//==============================================================================
-static void Quaternion_To_Euler(void)
-{
-    float q0 = imu_sys.q[0], q1 = imu_sys.q[1], q2 = imu_sys.q[2], q3 = imu_sys.q[3];
-
-    // Pitch (x-axis)
-    imu_sys.pitch = asinf(-2.0f * (q1*q3 - q0*q2)) * (180.0f / PI);
-
-    // Roll (y-axis)
-    imu_sys.roll  = atan2f(2.0f * (q2*q3 + q0*q1), 1.0f - 2.0f * (q1*q1 + q2*q2)) * (180.0f / PI);
-
-    // Yaw (z-axis)
-    imu_sys.yaw   = atan2f(2.0f * (q1*q2 + q0*q3), 1.0f - 2.0f * (q2*q2 + q3*q3)) * (180.0f / PI);
-}
-
-// å¿«é€Ÿå¹³æ–¹æ ¹å€’æ•° (Quake III ç»å…¸ç®—æ³•) æˆ–è€…ç›´æ¥ç”¨ 1.0/sqrtf
-static float InvSqrt(float x)
-{
-    if(x <= 0) return 0;
-    return 1.0f / sqrtf(x);
-}
-
-//==============================================================================
-// ä¸»æ›´æ–°å…¥å£
+// 2. ºËĞÄ¸üĞÂº¯Êı (Mahony + ¿¹Õğ + Smart Yaw) - ĞŞÕı°æ
 //==============================================================================
 void IMU_Fusion_Update(void)
 {
-    if(!imu_sys.is_ready) return;
+    float norm;
+    float vx, vy, vz;
+    float ex, ey, ez;
+    float halfT = FUSION_DT * 0.5f;
 
-    // 1. è·å–æ•°æ® + Smart Yaw å¤„ç† + æ»¤æ³¢
-    IMU_PreProcess();
+    // --- 1. »ñÈ¡Ó²¼şÊı¾İ & Ô¤´¦Àí ---
+    // [ĞŞÕı]: ÍÓÂİÒÇµ¥Î»×ª»» Raw -> rad/s
+    // Çı¶¯ÉèÖÃµÄÊÇ 2000dps£¬¶ÔÓ¦ÁéÃô¶È 16.4 LSB/(deg/s)
+    float gx = ((float)imu660ra_gyro_x) / 16.4f * (3.14159f / 180.0f);
+    float gy = ((float)imu660ra_gyro_y) / 16.4f * (3.14159f / 180.0f);
+    float gz = ((float)imu660ra_gyro_z) / 16.4f * (3.14159f / 180.0f);
 
-    // 2. EKF é¢„æµ‹ (é™€èºä»ªç§¯åˆ†)
-    EKF_Predict(imu_sys.gyro_x, imu_sys.gyro_y, imu_sys.gyro_z);
+    // »ñÈ¡Ô­Ê¼¼ÓËÙ¶È (LSB)
+    float ax = (float)imu660ra_acc_x;
+    float ay = (float)imu660ra_acc_y;
+    float az = (float)imu660ra_acc_z;
 
-    // 3. EKF ä¿®æ­£ (åŠ é€Ÿåº¦è®¡é‡åŠ›æ ¡å‡†)
-    // æ³¨æ„: EKF åªèƒ½ç”¨é‡åŠ›ä¿®æ­£ Pitch å’Œ Roll
-    // ç”±äºæˆ‘ä»¬å·²ç»åœ¨ PreProcess é‡Œå¯¹ GyroZ åšäº†æ­»åŒºé”å®šï¼Œ
-    // æ‰€ä»¥ä¸éœ€è¦ç”¨åŠ é€Ÿåº¦ä¿®æ­£ Yaw (é‡åŠ›ä¹Ÿä¿®ä¸äº† Yaw)ï¼Œè¿™æ ·æ—¢å‡†åˆä¸ä¼šä¹±é£˜ã€‚
-    EKF_Correct(imu_sys.acc_x, imu_sys.acc_y, imu_sys.acc_z);
+    // --- 2. Smart Yaw (ZÖá¾²Ì¬ËøËÀ) ---
+    if (fabsf(gz) < YAW_DEADZONE) {
+        imu_sys.yaw_stable_cnt++;
+        if (imu_sys.yaw_stable_cnt >= YAW_LOCK_COUNT) {
+            gz = 0.0f; 
+            if(imu_sys.yaw_stable_cnt > 1000) imu_sys.yaw_stable_cnt = 1000;
+        }
+    } else {
+        imu_sys.yaw_stable_cnt = 0;
+    }
+    
+    // Êä³öÂË²¨ºóµÄÍÓÂİÒÇÊı¾İ¸øÍâ²¿ (LQRÓÃ)
+    imu_sys.gyro_x_filt = gx; 
+    imu_sys.gyro_y_filt = gy; 
+    imu_sys.gyro_z_filt = gz;
 
-    // 4. ç»“æœè½¬æ¢
-    Quaternion_To_Euler();
+    // --- 3. Mahony »¥²¹ÂË²¨ºËĞÄ ---
+    
+    // [ÖÂÃü´íÎóĞŞÕıµã]: ½«Ô­Ê¼¼ÓËÙ¶È×ª»»Îª g µ¥Î»
+    // Çı¶¯ÉèÖÃµÄÊÇ ¡À8g Ä£Ê½£¬ÁéÃô¶ÈÎª 4096 LSB/g
+    float acc_norm_raw = sqrtf(ax*ax + ay*ay + az*az); // Ëã³öµÄÊÇ LSB Ä£³¤ (¾²Ö¹Ê±Ô¼4096)
+    float acc_norm_g = acc_norm_raw / 4096.0f;         // ×ª»»Îª g µ¥Î» (¾²Ö¹Ê±Ô¼1.0)
+
+    // [¿¹¸ÉÈÅºËĞÄ]: Ö»ÓĞÊÜÁ¦ÔÚ 0.85g ~ 1.15g Ö®¼ä£¬²ÅÈÏÎª¼ÓËÙ¶È¼Æ¿ÉĞÅ
+    if(acc_norm_g > ACC_MIN_G && acc_norm_g < ACC_MAX_G)
+    {
+        // ¹éÒ»»¯¼ÓËÙ¶ÈÏòÁ¿ (ÓÃÔ­Ê¼Êı¾İ¹éÒ»»¯¼´¿É£¬½á¹ûÊÇÒ»ÑùµÄÏòÁ¿·½Ïò)
+        norm = InvSqrt(ax*ax + ay*ay + az*az);
+        if(norm == 0.0f) return; // ·ÀÖ¹³ıÒÔ0
+        ax *= norm;
+        ay *= norm;
+        az *= norm;
+
+        // ¹À¼ÆÖØÁ¦·½Ïò (ËÄÔªÊı×ªĞı×ª¾ØÕóµÚÈıÁĞ)
+        vx = 2.0f * (imu_sys.q1 * imu_sys.q3 - imu_sys.q0 * imu_sys.q2);
+        vy = 2.0f * (imu_sys.q0 * imu_sys.q1 + imu_sys.q2 * imu_sys.q3);
+        vz = imu_sys.q0 * imu_sys.q0 - imu_sys.q1 * imu_sys.q1 - imu_sys.q2 * imu_sys.q2 + imu_sys.q3 * imu_sys.q3;
+
+        // ÏòÁ¿²æ»ı¼ÆËãÎó²î (²âÁ¿Öµ x ¹À¼ÆÖµ)
+        ex = (ay * vz - az * vy);
+        ey = (az * vx - ax * vz);
+        ez = (ax * vy - ay * vx);
+
+        // »ı·ÖÎó²î (Ïû³ıÎÂÆ¯)
+        imu_sys.exInt += ex * safe_Ki;
+        imu_sys.eyInt += ey * safe_Ki;
+        imu_sys.ezInt += ez * safe_Ki;
+
+        // PI ĞŞÕıÍÓÂİÒÇ
+        gx += safe_Kp * ex + imu_sys.exInt;
+        gy += safe_Kp * ey + imu_sys.eyInt;
+        gz += safe_Kp * ez + imu_sys.ezInt;
+    }
+    else
+    {
+        // Õğ¶¯×´Ì¬£¡·ÅÆú¼ÓËÙ¶È¼ÆĞŞÕı£¬Ö»ĞÅÍÓÂİÒÇ£¬·ÀÖ¹×ËÌ¬ÂÒÌø
+        // ´ËÊ± gx, gy, gz ±£³ÖÔ­Öµ (´¿»ı·Ö)
+        // µ÷ÊÔÊ±¿ÉÒÔÁÁ¸öµÆÌáÊ¾Õğ¶¯¹ı´ó
+    }
+
+    // --- 4. ËÄÔªÊı»ı·Ö (Ò»½×Áú¸ñ¿âËş) ---
+    float q0 = imu_sys.q0;
+    float q1 = imu_sys.q1;
+    float q2 = imu_sys.q2;
+    float q3 = imu_sys.q3;
+
+    q0 += (-q1 * gx - q2 * gy - q3 * gz) * halfT;
+    q1 += ( q0 * gx + q2 * gz - q3 * gy) * halfT;
+    q2 += ( q0 * gy - q1 * gz + q3 * gx) * halfT;
+    q3 += ( q0 * gz + q1 * gy - q2 * gx) * halfT;
+
+    // --- 5. ËÄÔªÊı¹éÒ»»¯ ---
+    norm = InvSqrt(q0*q0 + q1*q1 + q2*q2 + q3*q3);
+    imu_sys.q0 = q0 * norm;
+    imu_sys.q1 = q1 * norm;
+    imu_sys.q2 = q2 * norm;
+    imu_sys.q3 = q3 * norm;
+
+    // --- 6. Å·À­½Ç×ª»» (Z-Y-X Ë³Ğò) ---
+    // Pitch (XÖá)
+    imu_sys.pitch = asinf(-2.0f * (imu_sys.q1 * imu_sys.q3 - imu_sys.q0 * imu_sys.q2)) * 57.29578f;
+    // Roll (YÖá)
+    imu_sys.roll  = atan2f(2.0f * (imu_sys.q0 * imu_sys.q1 + imu_sys.q2 * imu_sys.q3), 1.0f - 2.0f * (imu_sys.q1 * imu_sys.q1 + imu_sys.q2 * imu_sys.q2)) * 57.29578f;
+    // Yaw (ZÖá)
+    imu_sys.yaw   = atan2f(2.0f * (imu_sys.q1 * imu_sys.q2 + imu_sys.q0 * imu_sys.q3), 1.0f - 2.0f * (imu_sys.q2 * imu_sys.q2 + imu_sys.q3 * imu_sys.q3)) * 57.29578f;
 }
