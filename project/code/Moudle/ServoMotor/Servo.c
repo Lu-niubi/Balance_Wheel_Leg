@@ -28,6 +28,7 @@ void Servo_Init(void)
     pwm_init(SERVO_CH1_PIN, SERVO_FREQ, 0);
     pwm_init(SERVO_CH2_PIN, SERVO_FREQ, 0);
     pwm_init(SERVO_CH3_PIN, SERVO_FREQ, 0);
+    pwm_init(SERVO_CH4_PIN, SERVO_FREQ, 0);
 }
 
 /**

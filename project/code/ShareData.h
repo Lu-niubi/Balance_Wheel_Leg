@@ -1,27 +1,43 @@
-#ifndef __SHAREDDATA_H__   // 如果没定义过
-
-#define __SHAREDDATA_H__   // 就定义它
+#ifndef __SHAREDDATA_H__
+#define __SHAREDDATA_H__
 
 #include <stdint.h>
 
 typedef struct
 {
     // ==========================================
-    // 区域 A：M0 的地盘,控制部分 (M0 Write ONLY, M1 Read ONLY)
+    // 区域 A：M0 的地盘 (M0 Write ONLY, M1 Read ONLY)
     // ==========================================
     struct
     {
-        volatile float target_speed;    // M0 告诉 M1 要跑多快
-        volatile int   run_mode;        // M0 告诉 M1现在的模式        
-    } M0_Pub; // Pub = Publish (发布)
+        volatile float target_speed;    
+        volatile int   run_mode;            
+    } M0_Pub;
 
     // ==========================================
-    // 区域 B：M1 的地盘,摄像头 (M1 Write ONLY, M0 Read ONLY)
+    // 区域 B：M1 的地盘 (M1 Write ONLY, M0 Read ONLY)
     // ==========================================
     struct
     {
-        volatile float error_angle;     // M1 告诉 M0 赛道偏差
-        volatile uint8_t motor_ready;   // M1 告诉 M0 电机准备好了
+        volatile float error_angle;      // 赛道偏差
+        volatile uint8_t motor_ready;    // 电机准备标志
+
+        // -------- 新增：Xbox 手柄数据 --------
+        volatile uint8_t  xbox_btn_y;
+        volatile uint8_t  xbox_btn_x;
+        volatile uint8_t  xbox_btn_b;
+        volatile uint8_t  xbox_btn_a;
+        
+        // 摇杆数据 (使用 int16_t 方便后续计算)
+        volatile int16_t xbox_joy_l_hori;
+        volatile int16_t xbox_joy_l_vert;
+        volatile int16_t xbox_joy_r_hori;
+        volatile int16_t xbox_joy_r_vert;
+        
+        volatile uint16_t xbox_trig_rt; // 扳机通常是 0-1023 或 0-65535
+        volatile uint8_t  xbox_updated; // 数据更新标志位(可选，用于判断连接状态)
+        // ------------------------------------
+
     } M1_Pub;
 
 } Shared_Data_t;

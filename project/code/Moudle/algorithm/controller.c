@@ -1,7 +1,7 @@
 /**
  * @file controller.c
  * @author wanghongxi (Ported)
- * @brief  PID控制器定义 (去除DWT依赖)
+ * @brief  PID控制器定义 
  * @version V1.1.4
  * @date 2024-01-04
  */

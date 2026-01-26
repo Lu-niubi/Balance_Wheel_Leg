@@ -6,16 +6,16 @@
 // -------------------------------------------------------------------------
 // 硬件引脚配置区 (根据实际接线修改此处)
 // -------------------------------------------------------------------------
-#define SERVO_CH1_PIN       (TCPWM_CH13_P00_3)  // 对应原代码 PWM1
-#define SERVO_CH2_PIN       (TCPWM_CH12_P01_0)  // 对应原代码 PWM2
-#define SERVO_CH3_PIN       (TCPWM_CH11_P01_1)  // 对应原代码 PWM3
-
+#define SERVO_CH1_PIN       (TCPWM_CH13_P00_3)  
+#define SERVO_CH2_PIN       (TCPWM_CH12_P01_0)  
+#define SERVO_CH3_PIN       (TCPWM_CH11_P01_1)  
+#define SERVO_CH4_PIN       (TCPWM_CH17_P00_1)  
 // -------------------------------------------------------------------------
 // 舵机参数配置
 // -------------------------------------------------------------------------
-#define SERVO_FREQ          (50)    // 舵机频率 50Hz (通用标准)
+#define SERVO_FREQ          (50)    // 舵机频率 50Hz 
 
-// 舵机机械限位建议 (度)
+// 舵机机械限位 (度)
 #define SERVO_ANGLE_MIN     (0)
 #define SERVO_ANGLE_MAX     (180)
 

@@ -1470,6 +1470,15 @@
                 </file>
             </group>
             <group>
+                <name>KScalculat</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\KScalculat\KS.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\KScalculat\KS.h</name>
+                </file>
+            </group>
+            <group>
                 <name>Motor</name>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Moudle\Motor\Motor.c</name>

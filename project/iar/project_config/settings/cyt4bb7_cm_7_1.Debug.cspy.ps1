@@ -23,9 +23,9 @@
 
 if ($debugfile -eq "")
 {
-& "D:\APP\IAR\common\bin\cspybat" -f "D:\ZNC\LT\CYT2BL3\CYT2BL3_Brushless_Driver_Project\Example\E06_CYT4BB7\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" --backend -f "D:\ZNC\LT\CYT2BL3\CYT2BL3_Brushless_Driver_Project\Example\E06_CYT4BB7\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
+& "D:\APP\IAR\common\bin\cspybat" -f "D:\ZNC\LT\LT\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" --backend -f "D:\ZNC\LT\LT\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
 }
 else
 {
-& "D:\APP\IAR\common\bin\cspybat" -f "D:\ZNC\LT\CYT2BL3\CYT2BL3_Brushless_Driver_Project\Example\E06_CYT4BB7\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" --debug_file=$debugfile --backend -f "D:\ZNC\LT\CYT2BL3\CYT2BL3_Brushless_Driver_Project\Example\E06_CYT4BB7\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
+& "D:\APP\IAR\common\bin\cspybat" -f "D:\ZNC\LT\LT\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" --debug_file=$debugfile --backend -f "D:\ZNC\LT\LT\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
 }
