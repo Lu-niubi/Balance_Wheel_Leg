@@ -93,7 +93,7 @@ int main(void)
     // -------------------------------------------------------------------------
 
     // 3.1 IMU 融合算法初始化 (会执行200次采样进行快速收敛，耗时约1秒)
-    printf("\r\nCalibrating IMU... Keep Stationary.");
+    // printf("\r\nCalibrating IMU... Keep Stationary.");
     IMU_Fusion_Init();
     printf("\r\nIMU Calibration Done.");
     // 3.2 重置 LQR 控制器状态
@@ -104,8 +104,8 @@ int main(void)
     pit_ms_init(PIT_CH0, 1);
     while(true)
     {
-      
-      
+      system_delay_ms(1000);
+      printf("%f,%f,%f\r\n",imu_sys.pitch,imu_sys.yaw,imu_sys.roll);
         // 此处编写需要循环执行的代码
     }
 }

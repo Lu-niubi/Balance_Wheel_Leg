@@ -48,27 +48,29 @@
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr(void)
 {
-    // 1. 清除中断标志位
-    pit_isr_flag_clear(PIT_CH0);
+pit_isr_flag_clear(PIT_CH0);
   
-    // 2. 获取硬件数据 (必须在这里调用，确保数据最新)
+    // 1. 获取硬件数据
     imu660ra_get_acc();
     imu660ra_get_gyro();
 
-    // 3. 执行 IMU 姿态解算
+    // 2. 解算
     IMU_Fusion_Update();
     
-    // 4. 数据单位转换 (LQR 需要弧度)
-    // 减去机械中值 -> 转弧度
+    // 3. 数据转换
     float pitch_deg = imu_sys.pitch - PITCH_OFFSET; 
-    float pitch_rad = pitch_deg * (PI / 180.0f);    
-    
-    // 角速度 (直接使用滤波后的 rad/s 数据)
-    float gyro_rad_s = imu_sys.gyro_x_filt;
+    float pitch_rad = pitch_deg * (PI / 180.0f);
+    float gyro_rad_s = imu_sys.gx;      // Pitch轴角速度
+    float yaw_gyro_rad_s = imu_sys.gz;  // Yaw轴角速度
 
-    // 5. 执行 LQR 平衡控制
-    // 腿长先固定 33mm (0.033m)
-    Motor_LQR_Balance_Control(0.033f, pitch_rad, gyro_rad_s);
+    // 4. 控制入口
+#ifdef USE_LQR_CONTROL
+    // Motor_LQR_Balance_Control(0.033f, pitch_rad, gyro_rad_s);
+#endif
+
+#ifdef USE_PID_CONTROL
+    Motor_PID_Balance_Control(pitch_rad, gyro_rad_s, yaw_gyro_rad_s);
+#endif
 }
 void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
 {
