@@ -1472,10 +1472,10 @@
             <group>
                 <name>KScalculat</name>
                 <file>
-                    <name>$PROJ_DIR$\..\..\code\Moudle\KScalculat\KS.c</name>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\KScalculat\KSCal.c</name>
                 </file>
                 <file>
-                    <name>$PROJ_DIR$\..\..\code\Moudle\KScalculat\KS.h</name>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\KScalculat\KSCal.h</name>
                 </file>
             </group>
             <group>

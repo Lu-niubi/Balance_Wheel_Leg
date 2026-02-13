@@ -2,7 +2,7 @@
 #define _IMU_DEAL_H_
 
 #include "zf_common_headfile.h"
-#include "KS.h"
+#include "KSCal.h"
 //==============================================================================
 // 核心参数
 //==============================================================================
@@ -11,8 +11,8 @@
 #define ACC_LSB_8G          4096.0f         // 8g 灵敏度
 
 // --- Mahony 算法参数 ---
-#define KP_NORMAL           0.8f            // 正常比例增益
-#define KI_NORMAL           0.002f          // 正常积分增益
+#define KP_NORMAL           0.8f            // 正常比例增益0.8
+#define KI_NORMAL           0.002f          // 正常积分增益0.2
 #define KP_INIT             20.0f           // 初始化快速收敛增益
 
 // --- 抗干扰阈值 ---

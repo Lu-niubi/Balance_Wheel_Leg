@@ -43,41 +43,45 @@
 #endif
 // 机械中值偏移 (Mechanical Zero Offset)
 // 如果车子直立静止时，pitch 不是 0 (比如是 -2.5度)，在这里填入 -2.5f
-// 作用：让 LQR 认为 -2.5度 才是“平衡点”，防止车子为了归零而一直跑
-#define PITCH_OFFSET  0.0f
+// 作用：让 LQR 认为 -2.5度 才是“平衡点”，防止车子为了归零而一直跑往前冲调大。往后调小
+#define PITCH_OFFSET 2.8f//2.5//3.8
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr(void)
 {
-pit_isr_flag_clear(PIT_CH0);
+   static int count = 0;
+   static uint8_t flag = 0;
+   pit_isr_flag_clear(PIT_CH0);
   
-    // 1. 获取硬件数据
+    // 1. 获取imu数据
     imu660ra_get_acc();
     imu660ra_get_gyro();
 
     // 2. 解算
     IMU_Fusion_Update();
     
-    // 3. 数据转换
-    float pitch_deg = imu_sys.pitch - PITCH_OFFSET; 
-    float pitch_rad = pitch_deg * (PI / 180.0f);
-    float gyro_rad_s = imu_sys.gx;      // Pitch轴角速度
-    float yaw_gyro_rad_s = imu_sys.gz;  // Yaw轴角速度
+   float pitch_deg = imu_sys.pitch - PITCH_OFFSET;
+   float pitch_rad = pitch_deg * 3.1415926f / 180.0f;  // 角度转弧度
+   float gyro_rad_s = imu_sys.gx;
 
     // 4. 控制入口
 #ifdef USE_LQR_CONTROL
-    // Motor_LQR_Balance_Control(0.033f, pitch_rad, gyro_rad_s);
+    count++;
+    if (count>=5)
+    {
+        count = 0;
+        Motor_LQR_Balance_Control(0.04123f, pitch_rad, gyro_rad_s);
+    }
 #endif
 
 #ifdef USE_PID_CONTROL
-    Motor_PID_Balance_Control(pitch_rad, gyro_rad_s, yaw_gyro_rad_s);
+   //Motor_PID_Balance_Control(pitch_deg, imu_sys.gx, imu_sys.gz);
 #endif
 }
 void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH1);
-    
+    Servo_Task();
 }
-
 void pit0_ch2_isr()                     // 定时器通道 2 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH2);

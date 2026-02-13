@@ -82,9 +82,9 @@ void IMU_Fusion_Update(void)
     float gy = ((float)imu660ra_gyro_y / GYRO_LSB_2000DPS * (M_PI / 180.0f)) - imu_sys.offset_gy;
     float gz = ((float)imu660ra_gyro_z / GYRO_LSB_2000DPS * (M_PI / 180.0f)) - imu_sys.offset_gz;
 
-    float ax = (float)imu660ra_acc_x;
-    float ay = (float)imu660ra_acc_y;
-    float az = (float)imu660ra_acc_z;
+    float ax = -(float)imu660ra_acc_x;
+    float ay = -(float)imu660ra_acc_y;
+    float az = -(float)imu660ra_acc_z;
 
     // --- 2. 加速度计处理 & Mahony 补偿 ---
     float acc_norm_raw = sqrtf(ax*ax + ay*ay + az*az);
@@ -107,11 +107,11 @@ void IMU_Fusion_Update(void)
 
         imu_sys.exInt += ex * safe_Ki;
         imu_sys.eyInt += ey * safe_Ki;
-        imu_sys.ezInt += ez * safe_Ki;
+        // imu_sys.ezInt += ez * safe_Ki;
 
         gx += safe_Kp * ex + imu_sys.exInt;
         gy += safe_Kp * ey + imu_sys.eyInt;
-        gz += safe_Kp * ez + imu_sys.ezInt;
+        // gz += safe_Kp * ez + imu_sys.ezInt;
     }
 
     // --- 3. Smart Yaw 静态锁死 (在积分前最后执行) ---
@@ -119,7 +119,7 @@ void IMU_Fusion_Update(void)
         gz = 0.0f;
     }
 
-    imu_sys.gx = gx; imu_sys.gy = gy; imu_sys.gz = gz;
+    imu_sys.gx = -gx; imu_sys.gy = gy; imu_sys.gz = gz;
 
     // --- 4. 四元数更新 ---
     float q0 = imu_sys.q0, q1 = imu_sys.q1, q2 = imu_sys.q2, q3 = imu_sys.q3;
@@ -132,7 +132,11 @@ void IMU_Fusion_Update(void)
     imu_sys.q0 *= norm; imu_sys.q1 *= norm; imu_sys.q2 *= norm; imu_sys.q3 *= norm;
 
     // --- 5. 欧拉角转换 ---
-    imu_sys.pitch = asinf(-2.0f * (imu_sys.q1 * imu_sys.q3 - imu_sys.q0 * imu_sys.q2)) * 57.29578f;
-    imu_sys.roll  = atan2f(2.0f * (imu_sys.q0 * imu_sys.q1 + imu_sys.q2 * imu_sys.q3), 1.0f - 2.0f * (imu_sys.q1 * imu_sys.q1 + imu_sys.q2 * imu_sys.q2)) * 57.29578f;
-    imu_sys.yaw   = atan2f(2.0f * (imu_sys.q1 * imu_sys.q2 + imu_sys.q0 * imu_sys.q3), 1.0f - 2.0f * (imu_sys.q2 * imu_sys.q2 + imu_sys.q3 * imu_sys.q3)) * 57.29578f;
+   // 修改后的逻辑：直接将算法算出的“数学Roll”给“物理Pitch”
+   float math_pitch = asinf(-2.0f * (imu_sys.q1 * imu_sys.q3 - imu_sys.q0 * imu_sys.q2)) * 57.29578f;
+   float math_roll  = atan2f(2.0f * (imu_sys.q0 * imu_sys.q1 + imu_sys.q2 * imu_sys.q3), 1.0f - 2.0f * (imu_sys.q1 * imu_sys.q1 + imu_sys.q2 * imu_sys.q2)) * 57.29578f;
+
+   imu_sys.pitch = -math_roll;  // 关键：把算出来的 Roll 存进 Pitch
+   imu_sys.roll  = math_pitch; // 把算出来的 Pitch 存进 Roll
+   imu_sys.yaw   = atan2f(2.0f * (imu_sys.q1 * imu_sys.q2 + imu_sys.q0 * imu_sys.q3), 1.0f - 2.0f * (imu_sys.q2 * imu_sys.q2 + imu_sys.q3 * imu_sys.q3)) * 57.29578f;
 }

@@ -12,6 +12,6 @@
 
 // 函数声明
 void RemoteController_Init(void);     // 初始化
-void RemoteController_Callback(void); // 接收中断回调
+void RemoteController_ReceiveByte(uint8_t temp_byte);
 
 #endif

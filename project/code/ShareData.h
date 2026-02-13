@@ -34,7 +34,7 @@ typedef struct
         volatile int16_t xbox_joy_r_hori;
         volatile int16_t xbox_joy_r_vert;
         
-        volatile uint16_t xbox_trig_rt; // 扳机通常是 0-1023 或 0-65535
+        volatile uint16_t xbox_trig_rt; // 扳机
         volatile uint8_t  xbox_updated; // 数据更新标志位(可选，用于判断连接状态)
         // ------------------------------------
 

@@ -17,23 +17,21 @@ void RemoteController_Init(void)
 {
     // 1. 初始化串口2，波特率115200，引脚 P10.0 RX, P10.1 TX
     uart_init(RC_UART_INDEX, RC_UART_BAUDRATE, RC_UART_TX_PIN, RC_UART_RX_PIN);
-    
+    uart_rx_interrupt(RC_UART_INDEX,1);
+    system_delay_ms(3000);//等待M0初始化完毕
     // 2. 开启接收中断 (逐飞库 uart_init 默认开启了中断，但需要去 isr 文件里关联回调)
     // 确保在 cm7_1_isr.c 的 uart2_isr 中调用 RemoteController_Callback
 }
 
 // 串口接收回调函数 (需要在中断里调用)
-void RemoteController_Callback(void)
+void RemoteController_ReceiveByte(uint8_t temp_byte)
 {
-    uint8_t temp_byte;
 
     // 从硬件 FIFO 读取一个字节
     // 注意：zf_driver_uart.c 中的 uart_query_byte 实际上是查询模式，
     // 但在 ISR 中我们确定 FIFO 有数据，所以直接读。
     // 为了兼容性，我们直接调用库的读取函数，或者直接操作寄存器(如果库函数不适用ISR)
     // 假设库提供了 uart_read_byte 或者我们在中断里直接用 query
-    if(uart_query_byte(RC_UART_INDEX, &temp_byte))
-    {
         switch (parse_state)
         {
         case RC_STATE_WAIT_HEADER:
@@ -70,16 +68,16 @@ void RemoteController_Callback(void)
                 
                 // 更新标志，表示活着
                 IPCS->M1_Pub.xbox_updated = !IPCS->M1_Pub.xbox_updated;
+                // 把从 M1_Pub 开始的这块区域的缓存，同步到真实内存里
+                SCB_CleanDCache_by_Addr((uint32_t *)&IPCS->M1_Pub, sizeof(IPCS->M1_Pub));
 
                 // === 解析完成，重置状态 ===
                 parse_state = RC_STATE_WAIT_HEADER;
                 rx_index = 0;
             }
             break;
-            
         default:
             parse_state = RC_STATE_WAIT_HEADER;
             break;
         }
-    }
 }

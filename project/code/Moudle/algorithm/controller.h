@@ -123,5 +123,6 @@ void PIDInit(PIDInstance *pid, PID_Init_Config_s *config);
  * @return float  PID计算输出
  */
 float PIDCalculate(PIDInstance *pid, float measure, float ref);
+float PIDCalculate_Balance(PIDInstance *pid, float measure, float ref, float gyro);
 
 #endif // _CONTROLLER_H

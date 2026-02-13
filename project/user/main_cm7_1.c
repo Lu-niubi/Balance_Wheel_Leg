@@ -54,17 +54,14 @@ int main(void)
 
 
     RemoteController_Init();
-    printf("Xbox Remote Controller Init Done.\r\n");
     // 此处编写用户代码 例如外设初始化代码等
     while(true)
     {
         // 此处编写需要循环执行的代码
         
-    system_delay_ms(100);
-    printf("JoyLH: %d, BtnA: %d\r\n", IPCS->M1_Pub.xbox_joy_l_hori, IPCS->M1_Pub.xbox_btn_a);
-    system_delay_ms(100);
-      
-        // 此处编写需要循环执行的代码
+    // system_delay_ms(1000);
+    // printf("JoyLH: %d, BtnA: %d\r\n", IPCS->M1_Pub.xbox_joy_l_hori, IPCS->M1_Pub.xbox_btn_a);      
+    // 此处编写需要循环执行的代码
     }
 }
 

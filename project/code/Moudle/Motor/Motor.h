@@ -4,19 +4,22 @@
 #include "stdint.h"
 #include "small_driver_uart_control.h" 
 
+
+//中等高度下
+
 //-------------------------------------------------------------------------------------------------------------------
 // 控制类型，注意只能选择一个，不选的那个要注释掉
 //-------------------------------------------------------------------------------------------------------------------
 #define USE_LQR_CONTROL    // 使用 LQR 平衡控制
-// #define USE_PID_CONTROL // 使用 PID 平衡控制
+//#define USE_PID_CONTROL // 使用 PID 平衡控制
 
 //-------------------------------------------------------------------------------------------------------------------
 //  宏定义 & 物理参数
 //-------------------------------------------------------------------------------------------------------------------
-#define MOTOR_MAX_DUTY      10000   // 电机最大占空比限制
-#define MOTOR_MIN_DUTY      -10000  // 电机反转最大占空比限制
+#define MOTOR_MAX_DUTY      9999   // 电机最大占空比限制10000
+#define MOTOR_MIN_DUTY      -9999  // 电机反转最大占空比限制-10000
 
-#define CONTROL_DT          0.005f  // 控制周期 (秒)，需与定时器中断频率一致
+#define CONTROL_DT          0.001f  // 控制周期 (秒)，需与定时器中断频率一致
 // [修改点]：根据最新测量，半径修正为 34mm
 #define WHEEL_RADIUS        0.034f  // 车轮半径 (米)
 
@@ -37,6 +40,12 @@
 //  函数声明 (保持不变)
 //-------------------------------------------------------------------------------------------------------------------
 
+extern int16_t Left_motor_duty;
+extern int16_t Right_motor_duty;
+extern float outtest;
+extern float y,x;
+extern float Leg;
+extern float k_out[4];
 void Motor_Init(void);
 void Motor_Set_Duty(int16_t left_duty, int16_t right_duty);
 int16_t Motor_Get_Left_Speed(void);
@@ -50,8 +59,10 @@ void Motor_LQR_Balance_Control(float leg_length, float imu_pitch, float imu_gyro
 
 #ifdef USE_PID_CONTROL
 void Motor_PID_Init(void); // PID 参数初始化
-// PID 平衡控制核心函数
-void Motor_PID_Balance_Control(float imu_pitch_rad, float imu_gyro_rad, float imu_yaw_gyro_rad);
+#endif
+
+#ifdef USE_PID_CONTROL
+void Motor_PID_Balance_Control(float imu_pitch_rad, float imu_gyro_rad, float imu_yaw_gyro_rad);// PID 平衡控制核心函数
 #endif
 
 #endif // _MOTOR_H_
