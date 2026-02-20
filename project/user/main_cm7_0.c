@@ -35,7 +35,10 @@
 
 #include "zf_common_headfile.h"
 #include "Motor.h"
-
+#include "IMU_Deal.h"
+#include "ShareData.h"
+#include "Servo.h"
+#include "KSCal.h"
 // 打开新的工程或者工程移动了位置务必执行以下操作
 // 第一步 关闭上面所有打开的文件
 // 第二步 project->clean  等待下方进度条走完
@@ -62,25 +65,109 @@
 int8 duty = 0;
 bool dir = true;
 
-
 int main(void)
 {
     clock_init(SYSTEM_CLOCK_250M); 	// 时钟配置及系统初始化<务必保留>
     debug_init();                       // 调试串口信息初始化
     // 此处编写用户代码 例如外设初始化代码等
     system_delay_init();
-    
-    // 此处编写用户代码 例如外设初始化代码等
+    printf("\r\nSystem Booting...\r\n");
+
+    // -------------------------------------------------------------------------
+    // 2. 硬件外设初始化
+    // -------------------------------------------------------------------------
+    float leg1 = 43.12f;
+    float deg = 90;
+    float rad = 0;
+    int time = 0;
+    float angle1 = 0;
+    float angle4 = 0;
+    // 2.2 舵机机驱动初始化
+    Servo_Init();
+    system_delay_ms(500);
+    //中间高度初始化
+    // 2.3 电机驱动初始化
+    Motor_Init();
+    Motor_Reset_State();
+    printf("\r\nMotor Driver OK.");
+    system_delay_ms(500);
+    while(imu660ra_init())
+    {
+        printf("\r\nIMU660RA Init Error! Check Wiring.");
+        system_delay_ms(500);
+    }
+    printf("\r\nIMU660RA Hardware OK.");
+    system_delay_ms(500);
+    // -------------------------------------------------------------------------
+    // 3. 算法层初始化 (必须在硬件OK后)
+    // -------------------------------------------------------------------------
+    // 3.1 IMU 融合算法初始化 (会执行200次采样进行快速收敛，耗时约1秒)
+    printf("\r\nCalibrating IMU... Keep Stationary.");
+    IMU_Fusion_Init();
+    printf("\r\nIMU Calibration Done.");
+    // 3.2 重置 LQR和PID 控制器状态
+    Motor_Reset_State();
+    system_delay_ms(500);
+    // -------------------------------------------------------------------------
+    // 4. 开启控制中断 (最后一步)
+    // -------------------------------------------------------------------------
+    pit_ms_init(PIT_CH0,1);
+    pit_ms_init(PIT_CH1,5);
+
+    float angle = 90;
+    float angle_step = 10.0f;
+    FiveBar_IK_Degree_Interface(Leg,90,&angle1,&angle4);
     while(true)
     {
+        SCB_InvalidateDCache_by_Addr((void *)&IPCS->M1_Pub, sizeof(IPCS->M1_Pub));
+        //  system_delay_ms(100);
+        // deg= deg+angle_step;
+        // if (deg<=40 || deg>=140)
+        // {
+        //     angle_step  = -angle_step;
+        // }
+        
+        // Left_FiveBar_IK_Degree_Interface(50,deg,&angle1,&angle4);
+        // Right_FiveBar_IK_Degree_Interface(50,deg,&angle1,&angle4);
+        //  printf("%f,%f\r\n",imu_sys.pitch,2.8);
+        angle_step++;
+        if (angle_step>=1000)
+        {
+        angle_step = 0;
+         printf("%f,%f,%f,%f\r\n",k_out[0],k_out[1],k_out[2],k_out[3]);
+        }
+        
+        // 为了串口调试看着舒服，用了多行打印
+        // system_delay_ms(1000);
+        // printf("----------- Xbox Status (%d) -----------\r\n", IPCS->M1_Pub.xbox_updated);
+        
+        // // 打印按键 (0 或 1)
+        // printf("BTN: [Y:%d] [X:%d] [B:%d] [A:%d]\r\n", 
+        //        IPCS->M1_Pub.xbox_btn_y,
+        //        IPCS->M1_Pub.xbox_btn_x,
+        //        IPCS->M1_Pub.xbox_btn_b,
+        //        IPCS->M1_Pub.xbox_btn_a);
 
-        printf("left speed:%d, right speed:%d\r\n", motor_value.receive_left_speed_data, motor_value.receive_right_speed_data);
+        // // 打印摇杆 (使用 %5d 固定宽度对齐)
+        // // int16范围: -32768 到 32767
+        // printf("JoyL: H:%5d V:%5d  |  JoyR: H:%5d V:%5d\r\n", 
+        //        IPCS->M1_Pub.xbox_joy_l_hori,
+        //        IPCS->M1_Pub.xbox_joy_l_vert,
+        //        IPCS->M1_Pub.xbox_joy_r_hori,
+        //        IPCS->M1_Pub.xbox_joy_r_vert);
 
-        system_delay_ms(50);
-      
-      
-        // 此处编写需要循环执行的代码
+        // // 打印扳机和电机标志
+        // printf("TrigRT: %5d  |  MotorReady: %d\r\n", 
+        //        IPCS->M1_Pub.xbox_trig_rt,
+        //        IPCS->M1_Pub.motor_ready);
+               
+        // printf("\r\n"); // 空行分隔
+
+        // printf("%f,%f,%f,%d\r\n",imu_sys.pitch,3.5,imu_sys.gx,motor_duty);
+        // printf("%f,%f,\r\n",leg,rad);
+        // printf("%f,%f,%f\r\n",angle,angle1,angle4);
     }
+        
 }
 
 // **************************** 代码区域 ****************************

@@ -1,17 +1,119 @@
 #include "Motor.h"
-#include <string.h> // ç”¨äº memset ç­‰ï¼Œå¦‚æœåº•å±‚æ²¡åŒ…å«çš„è¯
-
+#include <string.h> 
+#include "controller.h" 
+#include <math.h>
+#include "ShareData.h"
+#include "KSCal.h"
 //-------------------------------------------------------------------------------------------------------------------
-//  å†…éƒ¨é™æ€å‡½æ•°
+//  LQR ÄâºÏ²ÎÊı (BDS3620, 85gÂÖ×é, R=34mm)
+//-------------------------------------------------------------------------------------------------------------------
+// [ĞŞ¸Äµã]£ºÊ¹ÓÃ MATLAB Éú³ÉµÄ×îĞÂ²ÎÊı
+// ×¢Òâ£ºMATLAB Êä³öÏÔÊ¾ k_x Îª¸ºÖµ£¬k_theta ÎªÕıÖµ£¬ÕâÓÉ LQR Çó½âÆ÷¾ö¶¨£¬±£³ÖÔ­Ñù¼´¿É¡£
+float k_x_poly[4] = {0.000003, -0.000000, 0.000000, -5248.638811};
+float k_v_poly[4] = {5114683.336813, -1116363.941160, 85004.353155, -11376.839187};
+float k_theta_poly[4] = {-466039.789735, -594529.919467, 293048.266096, 8187.207806};
+float k_omega_poly[4] = {-480106.781393, 144801.055782, -409.647554, 1531.209091};
+float k_out[4] = {0,0,0,0};
+// -------------------------------------------------------------------------
+// PID²ÎÊıµ÷ÓÅÇø (¸ù¾İÊµ¼Ê³µÖØºÍµç»úÏìÓ¦µ÷Õû)
+// -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// ´®¼¶ PID ²ÎÊı¶¨Òå (ĞèÖØĞÂµ÷²Î)
+// -------------------------------------------------------------------------
+
+// 1. ×îÄÚ»·£º½ÇËÙ¶È»· (ÊäÈë: rad/s, Êä³ö: PWM)
+// Ö»ÓĞÕâÒ»»·Ö±½Ó¿ØÖÆµç»ú£¬Kp¾ö¶¨ÁËµç»ú¶ÔĞı×ªËÙ¶ÈµÄÏìÓ¦¿ìÂı
+#define GYRO_KP   380.0f   // µäĞÍÖµ£º¸ù¾İ PWM Á¿³Ìµ÷Õû         480 580
+#define GYRO_KI   0.0f     // Ò²¾ÍÊÇÍ¼Æ¬ÖĞµÄ "½ÇËÙ¶È»· PD"
+#define GYRO_KD   0.0f     // ÒÖÖÆ¸ßÆµÔëÉù
+
+// 2. ÖĞ¼ä»·£º½Ç¶È»· (ÊäÈë: ½Ç¶È/»¡¶È, Êä³ö: Ä¿±ê½ÇËÙ¶È rad/s)
+// ÕâÒ»»·¾ö¶¨ÁË³µ»ØÕıµÄ"ÓûÍû"Ç¿Èõ£¬Êä³öµÄÊÇ¸øÄÚ»·µÄÖ¸Áî
+#define ANG_KP    1.2f     // µäĞÍÖµ£ºÊä³öÊÇ rad/s£¬ËùÒÔ²»»áºÜ´ó    1.0 1.4 1.5/1.2
+#define ANG_KI    0.04f     //0.55  0.04
+#define ANG_KD    0.09f     // Í¨³£ÉèÎª0£¬ÒòÎªÎ¢·Ö×÷ÓÃÓÉÄÚ»·(½ÇËÙ¶È)³Ğµ£ÁË // 0.01//1.88 0.09
+
+// 3. ×îÍâ»·£ºËÙ¶È»· (ÊäÈë: ËÙ¶È, Êä³ö: Ä¿±ê½Ç¶È)
+#define SPD_KP    0.10f   //·Ç³£Ğ¡
+#define SPD_KI    0.001f  // »ı·ÖÒ²ÒªºÜĞ¡
+#define SPD_KD    0.0f     // ËÙ¶È»·Í¨³£²»ĞèÒª D
+#define SPD_MAX_PITCH  12.0f // ËÙ¶È»·×î´óÔÊĞíÊä³ö¶àÉÙ¶ÈÇã½Ç (°²È«ÏŞÖÆ
+
+// 4. ×ªÏò»·²ÎÊı (ÊäÈë: Ò¡¸Ë²îÖµ, Êä³ö: PWM²î·Ö)
+#define TURN_KP 1.0f
+#define TURN_KI 0.0f
+#define TURN_KD 0.05f
+
+// 5. ÊÖ±úÓ³ÉäÅäÖÃ
+#define JOYSTICK_DEADZONE 2000   // Ò¡¸ËËÀÇø (·ÀÖ¹Æ¯ÒÆ)
+#define MAX_TARGET_SPEED  5000.0f // ÂúÓÍÃÅÊ±µÄ×î´ó±àÂëÆ÷ËÙ¶È
+#define MAX_TURN_SPEED    2000.0f // Âú¶æÊ±µÄ×î´ó×ªÏòPWM·ÖÁ¿
+
+//È«¾Ö±äÁ¿
+int16_t Left_motor_duty = 0;
+int16_t Right_motor_duty = 0;
+float outtest = 0;
+float y,x = 0;
+float Leg = 0;
+//-------------------------------------------------------------------------------------------------------------------
+//  ÄÚ²¿±äÁ¿
 //-------------------------------------------------------------------------------------------------------------------
 
-/**
- * @brief   æ•°å€¼é™å¹…å‡½æ•°
- * @param   val è¾“å…¥å€¼
- * @param   min æœ€å°å€¼
- * @param   max æœ€å¤§å€¼
- * @return  é™å¹…åçš„å€¼
- */
+//LQRÄÚ²¿±äÁ¿ÉùÃ÷
+typedef struct {
+    float x;        // Î»ÒÆ (m)
+    float v;        // ËÙ¶È (m/s)
+    float theta;    // ½Ç¶È (rad)
+    float omega;    // ½ÇËÙ¶È (rad/s)
+} Robot_State_t;
+static Robot_State_t robot_state = {0};
+
+// PIDÄÚ²¿±äÁ¿ÉùÃ÷
+static PIDInstance pid_velo;   // ËÙ¶È»· (×îÍâ²ã)
+static PIDInstance pid_angle;  // ½Ç¶È»· (ÖĞ¼ä²ã)
+static PIDInstance pid_gyro;   // ½ÇËÙ¶È»· (×îÄÚ²ã)
+static PIDInstance pid_turn;    // ×ªÏò»·
+
+static float target_speed_filter = 0.0f; // ËÙ¶ÈÉè¶¨ÖµÂË²¨
+static float actual_speed_filter = 0.0f; // Êµ¼ÊËÙ¶ÈÂË²¨
+//-------------------------------------------------------------------------------------------------------------------
+//  ÄÚ²¿¾²Ì¬º¯Êı£¨¸¨Öúº¯Êı£©
+//-------------------------------------------------------------------------------------------------------------------
+
+// ==================================================================
+// ´¦ÀíÆæ¹ÖµÄÒ¡¸ËÊıÖµÓ³Éä
+// ==================================================================
+// ÊäÈë£ºÔ­Ê¼Ò¡¸ËÖµ (int16)
+// Êä³ö£º±ê×¼»¯ºóµÄ¸¡µãÊı (-1.0f ~ 1.0f)£¬¶ÔÓ¦ (-Max ~ +Max)
+static float Map_Strange_Joystick(int16_t raw_val, int is_vertical)
+{
+    float mapped_val = 0.0f;
+
+    // Âß¼­½âÎö£º
+    // ÕıÊıÇøÓò [0, 32767]£ºÊıÖµÔ½Ğ¡£¬ÓÍÃÅÔ½´ó (32767ÊÇÍ£, 0ÊÇÂú)
+    // ¸ºÊıÇøÓò [-32768, -1]£ºÊıÖµÔ½´ó£¬ÓÍÃÅÔ½´ó (-32768ÊÇÍ£, -1ÊÇÂú)
+    
+    if (raw_val >= 0) {
+        // ´¦ÀíÕıÊıÇøÓò (Ç°½ø/×ó×ª)
+        // 32767 - raw_val ½«·´×ªÂß¼­£º32767->0, 0->32767
+        mapped_val = (float)(32767 - raw_val);
+    } else {
+        // ´¦Àí¸ºÊıÇøÓò (ºóÍË/ÓÒ×ª)
+        // raw_val + 32768 ½«·¶Î§´Ó [-32768, -1] Ó³Éäµ½ [0, 32767]
+        // Ò²¾ÍÊÇ -32768 -> 0 (Í£), -1 -> 32767 (Âú)
+        // ÒòÎªÊÇ·´Ïò£¬ËùÒÔ×îºóÈ¡¸ººÅ
+        mapped_val = -((float)(raw_val + 32768));
+    }
+
+    // ¹éÒ»»¯µ½ -1.0 ~ 1.0
+    // 32767.0f ÊÇ×î´óÁ¿³Ì
+    float normalized = mapped_val / 32767.0f;
+
+    // ËÀÇø´¦Àí (Èí¼şËÀÇø£¬ÊıÖµÔÚ -0.05 ~ 0.05 Ö®¼äÇ¿ÖÆÎª0)
+    if (fabsf(normalized) < 0.05f) return 0.0f;
+
+    return normalized;
+}
 static int16_t clip_value(int16_t val, int16_t min, int16_t max)
 {
     if (val > max) return max;
@@ -19,43 +121,329 @@ static int16_t clip_value(int16_t val, int16_t min, int16_t max)
     return val;
 }
 
-//-------------------------------------------------------------------------------------------------------------------
-//  æ¥å£å‡½æ•°å®ç°
-//-------------------------------------------------------------------------------------------------------------------
-
-// 1. ç”µæœºåˆå§‹åŒ–
-void Motor_Init(void)
-{
-    // è°ƒç”¨åº•å±‚çš„ä¸²å£å’Œå‚æ•°åˆå§‹åŒ–
-    small_driver_uart_init();
-    
-    // åˆå§‹åŒ–åï¼Œåº•å±‚é©±åŠ¨ä¼šè‡ªåŠ¨å‘é€ small_driver_get_speed() 
-    // ä»è€Œè®©é©±åŠ¨æ¿å¼€å§‹å‘¨æœŸæ€§å›ä¼ æ•°æ®ï¼Œæ— éœ€åœ¨æ­¤é‡å¤è°ƒç”¨
+// y = ax^3 + bx^2 + cx + d
+static float poly_eval(float* poly, float l) {
+    return poly[0]*l*l*l + poly[1]*l*l + poly[2]*l + poly[3];
 }
 
-// 2. è®¾ç½®ç”µæœºå ç©ºæ¯” (ä¸»è¦å¢åŠ äº†å®‰å…¨é™å¹…)
+//-------------------------------------------------------------------------------------------------------------------
+//  ½Ó¿Úº¯ÊıÊµÏÖ
+//-------------------------------------------------------------------------------------------------------------------
+
+void Motor_Init(void)
+{
+    small_driver_uart_init();
+    Motor_Reset_State();
+    #ifdef USE_PID_CONTROL
+    Motor_PID_Init();
+    #endif
+}
+
 void Motor_Set_Duty(int16_t left_duty, int16_t right_duty)
 {
-    int16_t safe_left;
-    int16_t safe_right;
-
-    // è¿›è¡Œé™å¹…å¤„ç†ï¼Œé˜²æ­¢PIDè®¡ç®—è¾“å‡ºè¶…è¿‡é©±åŠ¨æ¿æ¥æ”¶èŒƒå›´ (-10000 ~ 10000)
-    safe_left  = clip_value(left_duty, MOTOR_MIN_DUTY, MOTOR_MAX_DUTY);
-    safe_right = clip_value(right_duty, MOTOR_MIN_DUTY, MOTOR_MAX_DUTY);
-
-    // è°ƒç”¨åº•å±‚å‘é€åè®®
+    int16_t safe_left  = clip_value(left_duty, MOTOR_MIN_DUTY, MOTOR_MAX_DUTY);
+    int16_t safe_right = clip_value(right_duty, MOTOR_MIN_DUTY, MOTOR_MAX_DUTY);
     small_driver_set_duty(safe_left, safe_right);
 }
 
-// 3. è·å–å·¦ç”µæœºé€Ÿåº¦
 int16_t Motor_Get_Left_Speed(void)
 {
-    // ç›´æ¥ä»åº•å±‚æš´éœ²çš„ç»“æ„ä½“ä¸­è¯»å–è§£åŒ…åçš„æ•°æ®
     return motor_value.receive_left_speed_data;
 }
 
-// 4. è·å–å³ç”µæœºé€Ÿåº¦
 int16_t Motor_Get_Right_Speed(void)
 {
-    return motor_value.receive_right_speed_data;
+    return -motor_value.receive_right_speed_data;
 }
+void Motor_Reset_State(void)
+{
+    // --- 1. LQR ×´Ì¬ÖØÖÃ (±£ÁôÒÔ±¸ÇĞ»») ---
+    robot_state.x = 0.0f;
+    robot_state.v = 0.0f;
+    robot_state.theta = 0.0f;
+    robot_state.omega = 0.0f;
+
+    // --- 2. ´®¼¶ PID ×´Ì¬ÖØÖÃ ---
+    // ±ØĞëÇå¿ÕËùÓĞ»·µÄ»ı·ÖÏî¡¢ÀúÊ·Îó²îºÍÊä³ö£¬·ÀÖ¹ÖØÆôË²¼ä"·É³µ"
+
+    // 2.1 ×îÍâ»·£ºËÙ¶È»· (pid_velo)
+    pid_velo.ITerm = 0;
+    pid_velo.Iout = 0;
+    pid_velo.Output = 0;      // ¹Ø¼ü£ºÇå¿ÕÊä³ö£¬·ÀÖ¹¿ª»ú¾ÍÓĞÄ¿±ê½Ç¶È
+    pid_velo.Last_Err = 0;
+    pid_velo.Last_Output = 0;
+
+    // 2.2 ÖĞ¼ä»·£º½Ç¶È»· (pid_angle)
+    pid_angle.ITerm = 0;
+    pid_angle.Iout = 0;
+    pid_angle.Output = 0;     // ¹Ø¼ü£ºÇå¿ÕÊä³ö£¬·ÀÖ¹¿ª»ú¾ÍÓĞÄ¿±ê½ÇËÙ¶È
+    pid_angle.Last_Err = 0;
+    pid_angle.Last_Output = 0;
+
+    // 2.3 ×îÄÚ»·£º½ÇËÙ¶È»· (pid_gyro)
+    pid_gyro.ITerm = 0;
+    pid_gyro.Iout = 0;
+    pid_gyro.Output = 0;      // ¹Ø¼ü£ºÇå¿ÕÊä³ö£¬·ÀÖ¹¿ª»úµç»ú¾ÍÓĞPWM
+    pid_gyro.Last_Err = 0;
+    pid_gyro.Last_Output = 0;
+
+    // 2.4 ×ªÏò»· (pid_turn)
+    pid_turn.ITerm = 0;
+    pid_turn.Iout = 0;
+    pid_turn.Output = 0;
+    pid_turn.Last_Err = 0;
+    
+    // --- 3. ÂË²¨Æ÷ÓëÖ´ĞĞÆ÷ÖØÖÃ ---
+    target_speed_filter = 0.0f;
+    actual_speed_filter = 0.0f;
+    
+    // Ç¿ÖÆ¹Ø±Õµç»ú
+    Motor_Set_Duty(0, 0);
+}
+#ifdef USE_LQR_CONTROL
+// LQR Æ½ºâ¿ØÖÆºËĞÄ
+void Motor_LQR_Balance_Control(float leg_length, float imu_pitch, float imu_gyro)
+{
+    Leg = leg_length;
+    // --- Step 1: ×´Ì¬½âËã ---
+    int16_t speed_L_raw = Motor_Get_Left_Speed();
+    int16_t speed_R_raw = Motor_Get_Right_Speed();
+    Left_motor_duty = speed_L_raw;
+    Right_motor_duty = speed_R_raw;
+    // ×ª»»ÎªÏßËÙ¶È (m/s) = (RPM / 60) * 2 * PI * r
+    float speed_L_ms = (speed_L_raw / 60.0f) * 2 * 3.14159f * WHEEL_RADIUS;
+    float speed_R_ms = (speed_R_raw / 60.0f) * 2 * 3.14159f * WHEEL_RADIUS;
+    float v_avg = (speed_L_ms + speed_R_ms) / 2.0f;
+    
+    robot_state.v = v_avg;
+    robot_state.x += robot_state.v * CONTROL_DT; 
+    robot_state.theta = imu_pitch;
+    robot_state.omega = imu_gyro;
+
+    // --- Step 2: µ¹µØ±£»¤ ---
+    // ½Ç¶È¹ı´ó (Ô¼70¶È1.22/45¶È0.8) Í£»ú
+    if (fabs(imu_pitch) > 0.8f) {
+        Motor_Set_Duty(0, 0);
+        robot_state.x = 0; 
+        return;
+    }
+
+    // --- Step 3: ÔöÒæµ÷¶È (¼ÆËã K) ---
+    // [ĞŞ¸Äµã]£ºÏŞÖÆ·¶Î§±ØĞëÆ¥Åä MATLAB µÄ¼ÆËã·¶Î§ (0.03 ~ 0.08)
+    // Èç¹û³¬³öÕâ¸ö·¶Î§£¬¶àÏîÊ½ÄâºÏ»á·¢É¢£¬Ëã³ö¼«ÆäÀëÆ×µÄ K Öµµ¼ÖÂ·É³µ
+    float l_safe = leg_length;
+    if(l_safe < 0.03f) l_safe = 0.03f; // ×îĞ¡Öµ 3cm
+    if(l_safe > 0.08f) l_safe = 0.08f; // ×î´óÖµ 8cm
+
+    float k_x     = poly_eval(k_x_poly, l_safe);
+    float k_v     = poly_eval(k_v_poly, l_safe);
+    float k_theta = poly_eval(k_theta_poly, l_safe);
+    float k_omega = poly_eval(k_omega_poly, l_safe);
+
+    // --- Step 4: LQR Êä³ö¼ÆËã ---
+    // u = -K * x
+    // [¼«ĞÔ¼ì²éÖØÒªÌáÊ¾]£º
+    // Èç¹û³µ×ÓÍùµ¹ÏÂµÄ·½Ïò¼ÓËÙ£¨±ÈÈçÇ°ÇãÊ±ÂÖ×ÓÍùºó×ª£¬»òÕßÇ°ÇãÊ±ÂÖ×ÓÃÍ³åµ¼ÖÂ·É³öÈ¥£©£¬
+    // ÇëÈ¥µôÏÂÃæµÄ¸ººÅ£¬¸ÄÎª float pwm_out_float = (...);//k_x * robot_state.x 
+    // 1. µ¥¶À¼ÆËã¸÷¸ö·ÖÁ¿
+
+    float u_x = k_x * robot_state.x;
+
+    float u_v = k_v * robot_state.v;
+    
+    
+    //ÏŞ·ù (-4000 ~ 4000)
+    if (u_v > 4000.0f) u_v = 4000.0f;
+    else if (u_v < -4000.0f) u_v = -4000.0f;
+    if (u_x > 4000.0f) u_x = 4000.0f;
+    else if (u_x < -4000.0f) u_x = -4000.0f;
+    // ÈíÆô¶¯ target_pitch Ëã³öÀ´ÁË
+    float angle_error = robot_state.theta;
+    float u_theta = k_theta * angle_error; 
+    float u_omega = k_omega * robot_state.omega;
+
+    // 2. ´æÈëµ÷ÊÔÊı×é 
+    k_out[0] = u_x;
+    k_out[1] = u_v;
+    k_out[2] = u_theta;
+    k_out[3] = u_omega;
+
+    // 3. ÇóºÍºÏ²¢
+    float pwm_out_float = -(u_v + u_x + u_theta + u_omega);
+    
+    // --- Step 5: Êä³ö ---
+    int16_t pwm_final = (int16_t)pwm_out_float;
+    
+    pwm_final = clip_value(pwm_final, -9999, 9999);
+    
+    Motor_Set_Duty(-pwm_final, pwm_final);
+
+}
+#endif // USE_LQR_CONTROL
+#ifdef USE_PID_CONTROL
+void Motor_PID_Init(void)
+{
+    Motor_Reset_State();
+
+    PID_Init_Config_s config;
+
+    // --- 1. ×îÄÚ»·£º½ÇËÙ¶È»· (Gyro Loop) ---
+    config.Kp = GYRO_KP;
+    config.Ki = GYRO_KI;
+    config.Kd = GYRO_KD;
+    config.dt = CONTROL_DT; // 1ms
+    config.MaxOut = MOTOR_MAX_DUTY; // PWM Âú·ùÏŞÖÆ
+    config.IntegralLimit = 1000.0f;
+    config.DeadBand = 0;
+    // ÄÚ»·¿ÉÒÔÊ¹ÓÃÎ¢·ÖÂË²¨À´¼õÉÙÔëÉù
+    config.Improve = PID_Derivative_On_Measurement | PID_Integral_Limit;
+    config.Derivative_LPF_RC = 0.00;//0.005f0.83;
+    config.Output_LPF_RC = 0.0f;
+    PIDInit(&pid_gyro, &config);
+
+    // --- 2. ÖĞ¼ä»·£º½Ç¶È»· (Angle Loop) ---
+    config.Kp = ANG_KP;
+    config.Ki = ANG_KI;
+    config.Kd = ANG_KD;
+    config.dt = CONTROL_DT * 5; // 5ms
+    // ÖØÒª£º½Ç¶È»·µÄÊä³öÊÇ"½ÇËÙ¶È"£¬ÎïÀí¼«ÏŞÍ¨³£ÔÚ 10 rad/s ÒÔÄÚ
+    config.MaxOut = 15.0f;
+    config.IntegralLimit = 5.0f;
+    config.Improve = PID_OutputFilter|PID_Integral_Limit; // ÕâÀïµÄÂË²¨¿ÉÒÔÆ½»¬¸øÄÚ»·µÄÖ¸Áî
+    config.Output_LPF_RC = 0.0f; 
+    PIDInit(&pid_angle, &config);
+
+    // --- 3. ×îÍâ»·£ºËÙ¶È»· (Speed Loop) ---
+    config.Kp = SPD_KP;
+    config.Ki = SPD_KI;
+    config.Kd = SPD_KD;
+    config.dt = CONTROL_DT * 10; // 10ms
+    config.MaxOut = SPD_MAX_PITCH; // Êä³öÏŞÖÆÎª×î´óÇã½Ç
+    config.IntegralLimit = 2.0f;
+    config.Improve = PID_Integral_Limit | PID_OutputFilter;
+    config.Output_LPF_RC = 0.5f;
+    PIDInit(&pid_velo, &config);
+}
+// -------------------------------------------------------------------------
+// PID Æ½ºâ¿ØÖÆºËĞÄ (ĞèÔÚ pit0_ch0_isr ÖĞµ÷ÓÃ)
+// ²ÎÊı: 
+//   imu_pitch: µ±Ç°¸©Ñö½Ç(½Ç¶È¶È)
+//   imu_gyro_rad:  µ±Ç°¸©Ñö½ÇËÙ¶È(rad/s) -> ¶ÔÓ¦ Gyro X
+//   imu_yaw_gyro_rad: µ±Ç°º½Ïò½ÇËÙ¶È(rad/s) -> ¶ÔÓ¦ Gyro Z
+// -------------------------------------------------------------------------
+void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_yaw_gyro_rad)
+{
+    static uint8_t speed_loop_cnt = 0;
+    static uint8_t angle_loop_cnt = 0;
+    // ´®¼¶ĞÅºÅÁ÷±äÁ¿
+    static float target_pitch_angle = 0.0f; // À´×ÔËÙ¶È»·
+    static float target_gyro_rate = 0.0f;   // À´×Ô½Ç¶È»·
+    float balance_pwm_out = 0.0f;    // À´×Ô½ÇËÙ¶È»·
+
+    // 0. µ¹µØ±£»¤
+    if (fabsf(imu_pitch) > 45.0f || IPCS->M1_Pub.xbox_btn_a == 1)
+    {
+        Motor_Reset_State();
+        return;
+    }
+
+    // ============================================================
+    // 1. ×îÍâ»·£ºËÙ¶È»· (10ms Ö´ĞĞÒ»´Î)
+    // ¹¦ÄÜ£º¸ù¾İÒ¡¸Ë¿ØÖÆÍÈ²¿½Ç¶È£¬¸Ä±äÖØĞÄ
+    // ============================================================
+    speed_loop_cnt++;
+    if (speed_loop_cnt >= 10) 
+    {
+        speed_loop_cnt = 0;
+
+        // --- Step 1.1: Ò¡¸ËÊı¾İÇåÏ´ ---
+        // »ñÈ¡ÊúÖ±Ò¡¸Ë (¿ØÖÆÇ°ºó)
+        int16_t joy_v_raw = IPCS->M1_Pub.xbox_joy_l_vert;
+        // Ê¹ÓÃ×¨ÓÃº¯ÊıÓ³Éäµ½ -1.0 ~ 1.0
+        float speed_ratio = Map_Strange_Joystick(joy_v_raw, 1); 
+        y = speed_ratio;
+        // ¼ÆËãÄ¿±êËÙ¶È (µ¥Î»: ±àÂëÆ÷ÊıÖµ/PWMÁ¿¼¶)
+        float target_speed = speed_ratio * MAX_TARGET_SPEED * 0.25;
+        
+        // Ä¿±êËÙ¶ÈÂË²¨ (Ê¹¼Ó¼õËÙÆ½»¬)
+        target_speed_filter = 0.9f * target_speed_filter + 0.1f * target_speed;
+
+        // »ñÈ¡Êµ¼ÊËÙ¶È (×óÓÒÂÖÆ½¾ù)
+        float current_speed = (Motor_Get_Left_Speed() + Motor_Get_Right_Speed()) / 2.0f;
+        actual_speed_filter = 0.7f * actual_speed_filter + 0.3f * current_speed;
+
+        // --- Step 1.2: ËÙ¶È»· PID ¼ÆËã ---
+        // ÕâÀïµÄ PID Êä³ö½«×÷Îª¡°ÍÈ²¿½Ç¶ÈµÄÆ«ÒÆÁ¿¡±
+        float speed_pid_out = PIDCalculate(&pid_velo, actual_speed_filter, 0);
+        outtest = speed_pid_out;
+        // --- Step 1.3: ÍÈ²¿Äæ½â¿ØÖÆ (ÖØĞÄÆ«ÒÆ) ---
+        // Âß¼­£ºÏëÇ°½ø(PID>0) -> ÍÈºó°Ú(>90) -> ÖØĞÄÇ°ÒÆ
+        // »ù´¡½Ç¶È 90¶È + PIDÊä³ö
+        float target_leg_angle = 90.0f - speed_pid_out;
+
+        // ÎïÀíÏŞ·ù (·ÀÖ¹»ú¹¹¿¨ËÀ)
+        if(target_leg_angle > 150.0f) target_leg_angle = 150.0f;
+        if(target_leg_angle < 30.0f)  target_leg_angle = 30.0f;
+
+        // Ö´ĞĞÄæ½â (¼ÙÉèÍÈ³¤¹Ì¶¨ 41.23)
+        float dummy_deg1, dummy_deg4;
+        float wish_leg = target_leg_angle;
+        Left_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
+        Right_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
+        
+        // ×¢Òâ£ºÔÚÂÖÍÈ½âñîÄ£Ê½ÏÂ£¬Ä¿±ê Pitch ½Ç¶ÈÊ¼ÖÕËøËÀÎª 0 (»òÕß»úĞµÖĞÖµÆ«ÒÆ)
+        target_pitch_angle = 0.0f; 
+    }
+    // // ============================================================
+    // 2. ÖĞ¼ä»·£º½Ç¶È»· (5ms Ö´ĞĞ)
+    // Ä¿±ê£ºÄ¿±ê½Ç¶È -> Êä³ö£ºÄ¿±ê½ÇËÙ¶È (Target Gyro Rate)
+    // ============================================================
+    angle_loop_cnt++;
+    if (angle_loop_cnt >= 5) 
+    {
+        angle_loop_cnt = 0;
+    // ÕâÀïÊ¹ÓÃ±ê×¼µÄ PIDCalculate
+    // ÊäÈë£ºÊµ¼Ê½Ç¶È£¬ÆÚÍû£ºÄ¿±ê½Ç¶È (»úĞµÖĞÖµ£¨ÖĞ¶ÏÖĞ£© + ËÙ¶È»·Êä³ö)
+    float final_target_pitch = target_pitch_angle;
+    
+    // ½Ç¶È»·¼ÆËã
+    // ÎïÀíº¬Òå£ºÈç¹ûÎÒ»¹Ã»µ½Ä¿±ê½Ç¶È£¬ÎÒÏ£ÍûÒÔ¶à¿ìµÄËÙ¶È×ª¹ıÈ¥£¿
+    target_gyro_rate = PIDCalculate(&pid_angle, imu_pitch, final_target_pitch);
+    }
+    // ============================================================
+    // 3. ×îÄÚ»·£º½ÇËÙ¶È»· (1ms Ö´ĞĞ)
+    // Ä¿±ê£ºÄ¿±ê½ÇËÙ¶È -> Êä³ö£ºµç»ú PWM
+    // ============================================================
+    
+    // ÊäÈë£ºÊµ¼Ê½ÇËÙ¶È (imu_gyro_rad)£¬ÆÚÍû£ºÄ¿±ê½ÇËÙ¶È
+    balance_pwm_out = PIDCalculate(&pid_gyro, imu_gyro_rad, target_gyro_rate);
+
+    // ============================================================
+    // 4. ×ªÏò»· & Êä³ö»ìºÏ
+    // ============================================================
+    
+    // --- Step 4.1: Ò¡¸ËÊı¾İÇåÏ´ ---
+    // »ñÈ¡Ë®Æ½Ò¡¸Ë (¿ØÖÆ×óÓÒ)
+    // int16_t joy_h_raw = IPCS->M1_Pub.xbox_joy_l_hori;
+    // // Ê¹ÓÃ×¨ÓÃº¯ÊıÓ³Éäµ½ -1.0 ~ 1.0 (ÕıÎª×ó£¬¸ºÎªÓÒ)
+    // float turn_ratio = Map_Strange_Joystick(joy_h_raw, 0);
+
+    // // ¼ÆËãÄ¿±ê×ªÏòËÙ¶È (PWM ²î·ÖÁ¿¼¶)
+    // // ×¢Òâ£ºÍ¨³£×óÍÆÒ¡¸ËÏ£ÍûÏò×ó×ª£¬×óÂÖ¼õËÙÓÒÂÖ¼ÓËÙ
+    // float target_turn_pwm = turn_ratio * MAX_TURN_SPEED;
+
+    // --- Step 4.2: ×ªÏò PID (¼òµ¥ P »ò PD) ---
+    // ÊäÈë£ºYawÖá½ÇËÙ¶È (rad/s) * ÏµÊı£¬ ÆÚÍû£ºÒ¡¸ËÉè¶¨Öµ
+    // Ä¿µÄ£ºÈÃ³µÉíµÄĞı×ªËÙ¶È¸úËæÒ¡¸ËµÄÉîÇ³
+    // float turn_out = PIDCalculate(&pid_turn, imu_yaw_gyro_rad * 50.0f, target_turn_pwm);
+
+    float motor_l = balance_pwm_out; //+ turn_out;
+    float motor_r = balance_pwm_out; //- turn_out;
+
+    int16_t final_l = -(int16_t)motor_l; // ¼«ĞÔ¸ù¾İÄãÔ­À´µÄ´úÂë±£Áô
+    int16_t final_r = (int16_t)motor_r;
+    Left_motor_duty = final_l;
+    Right_motor_duty = final_r;
+    Motor_Set_Duty(final_l, final_r);
+}
+#endif

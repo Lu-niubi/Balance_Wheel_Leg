@@ -374,6 +374,8 @@
                     <state>$PROJ_DIR$\..\..\..\libraries\zf_components</state>
                     <state>$PROJ_DIR$\..\..\user</state>
                     <state>$PROJ_DIR$\..\..\code</state>
+                    <state>$PROJ_DIR$\..\..\code</state>
+                    <state>$PROJ_DIR$\..\..\code\Moudle\RemoteController</state>
                 </option>
                 <option>
                     <name>CCStdIncCheck</name>
@@ -1115,6 +1117,18 @@
     </configuration>
     <group>
         <name>code</name>
+        <group>
+            <name>Moudle</name>
+            <group>
+                <name>RemoteContorller</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\RemoteController\RemoteController.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\RemoteController\RemoteController.h</name>
+                </file>
+            </group>
+        </group>
         <file>
             <name>$PROJ_DIR$\..\..\code\ShareData.h</name>
         </file>

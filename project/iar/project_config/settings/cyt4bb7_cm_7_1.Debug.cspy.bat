@@ -25,7 +25,7 @@ if not "%~1" == "" goto debugFile
 
 @echo on 
 
-"D:\APP\IAR\common\bin\cspybat" -f "D:\ZNC\LT\CYT2BL3\CYT2BL3_Brushless_Driver_Project\Example\E06_CYT4BB7\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" --backend -f "D:\ZNC\LT\CYT2BL3\CYT2BL3_Brushless_Driver_Project\Example\E06_CYT4BB7\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
+"D:\APP\IAR\common\bin\cspybat" -f "D:\ZNC\LT\LT\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" --backend -f "D:\ZNC\LT\LT\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
 
 @echo off 
 goto end 
@@ -34,7 +34,7 @@ goto end
 
 @echo on 
 
-"D:\APP\IAR\common\bin\cspybat" -f "D:\ZNC\LT\CYT2BL3\CYT2BL3_Brushless_Driver_Project\Example\E06_CYT4BB7\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" "--debug_file=%~1" --backend -f "D:\ZNC\LT\CYT2BL3\CYT2BL3_Brushless_Driver_Project\Example\E06_CYT4BB7\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
+"D:\APP\IAR\common\bin\cspybat" -f "D:\ZNC\LT\LT\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.general.xcl" "--debug_file=%~1" --backend -f "D:\ZNC\LT\LT\Seekfree_CYT4BB_Opensource_Library\project\iar\project_config\settings\cyt4bb7_cm_7_1.Debug.driver.xcl" 
 
 @echo off 
 :end

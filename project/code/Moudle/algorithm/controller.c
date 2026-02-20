@@ -1,7 +1,7 @@
 /**
  * @file controller.c
  * @author wanghongxi (Ported)
- * @brief  PID控制器定义 (去除DWT依赖)
+ * @brief  PID控制器定义 
  * @version V1.1.4
  * @date 2024-01-04
  */
@@ -66,18 +66,34 @@ static void f_Derivative_On_Measurement(PIDInstance *pid)
     pid->Dout = pid->Kd * (pid->Last_Measure - pid->Measure) / pid->dt;
 }
 
-// 微分滤波
+// ==========================================
+// 微分滤波 (EMA 滤波)
+// 参数意义：pid->Derivative_LPF_RC 代表旧数据的权重 (0.0 ~ 1.0)
+// ==========================================
 static void f_Derivative_Filter(PIDInstance *pid)
 {
-    pid->Dout = pid->Dout * pid->dt / (pid->Derivative_LPF_RC + pid->dt) +
-                pid->Last_Dout * pid->Derivative_LPF_RC / (pid->Derivative_LPF_RC + pid->dt);
+    // 提取旧数据权重，限制在 0~1 之间防止溢出暴走
+    float alpha = pid->Derivative_LPF_RC;
+    if (alpha > 1.0f) alpha = 1.0f;
+    if (alpha < 0.0f) alpha = 0.0f;
+
+    // 新的Dout = (新计算的原始Dout * 新数据占比) + (上一次的Dout * 旧数据占比)
+    pid->Dout = (pid->Dout * (1.0f - alpha)) + (pid->Last_Dout * alpha);
 }
 
-// 输出滤波
+// ==========================================
+// 输出滤波 (EMA 滤波)
+// 参数意义：pid->Output_LPF_RC 代表旧数据的权重 (0.0 ~ 1.0)
+// ==========================================
 static void f_Output_Filter(PIDInstance *pid)
 {
-    pid->Output = pid->Output * pid->dt / (pid->Output_LPF_RC + pid->dt) +
-                  pid->Last_Output * pid->Output_LPF_RC / (pid->Output_LPF_RC + pid->dt);
+    // 提取旧数据权重，限制在 0~1 之间防止溢出暴走
+    float alpha = pid->Output_LPF_RC;
+    if (alpha > 1.0f) alpha = 1.0f;
+    if (alpha < 0.0f) alpha = 0.0f;
+
+    // 新的Output = (新计算的原始Output * 新数据占比) + (上一次的Output * 旧数据占比)
+    pid->Output = (pid->Output * (1.0f - alpha)) + (pid->Last_Output * alpha);
 }
 
 // 输出限幅
@@ -210,6 +226,85 @@ float PIDCalculate(PIDInstance *pid, float measure, float ref)
     }
 
     // 保存当前数据,用于下次计算
+    pid->Last_Measure = pid->Measure;
+    pid->Last_Output = pid->Output;
+    pid->Last_Dout = pid->Dout;
+    pid->Last_Err = pid->Err;
+    pid->Last_ITerm = pid->ITerm;
+
+    return pid->Output;
+}
+
+/**
+ * @brief           直立环专用PID计算 (使用外部陀螺仪角速度作为微分项)
+ * @param[in]       pid      PID结构体
+ * @param[in]       measure  测量值 (当前角度 Pitch)
+ * @param[in]       ref      期望值 (期望角度 Target Pitch)
+ * @param[in]       gyro     角速度 (Gyro Y, 单位: rad/s 或 LSB)
+ * @retval          计算结果 (PWM/Current)
+ */
+float PIDCalculate_Balance(PIDInstance *pid, float measure, float ref, float gyro)
+{
+    // 堵转检测 (通常直立环不太需要，但保留以防万一)
+    if (pid->Improve & PID_ErrorHandle)
+        f_PID_ErrorHandle(pid);
+
+    // 1. 保存数据 & 计算误差
+    pid->Measure = measure;
+    pid->Ref = ref;
+    pid->Err = pid->Ref - pid->Measure;
+
+    // 2. 如果在死区外, 则计算PID
+    if (abs(pid->Err) > pid->DeadBand)
+    {
+        // --- P项: 角度误差产生的回复力 ---
+        pid->Pout = pid->Kp * pid->Err;
+
+        // --- I项: 角度积分 (保留原有优化逻辑) ---
+        pid->ITerm = pid->Ki * pid->Err * pid->dt;
+
+        // 梯形积分优化
+        if (pid->Improve & PID_Trapezoid_Intergral)
+            f_Trapezoid_Intergral(pid);
+
+        // 变速积分优化
+        if (pid->Improve & PID_ChangingIntegrationRate)
+            f_Changing_Integration_Rate(pid);
+        
+        // --- D项: 核心修改点 ---
+        // 使用外部传入的 gyro (角速度) 代替 (Err - Last_Err)/dt
+        // 直立环中 D 项的作用是阻尼，力矩方向应与角速度方向相反
+        // 假设 gyro 为正代表向前倒的速度，我们需要产生向后的力矩，所以是减号
+        // 如果实际测试车子加速倒下，请将这里的减号改为加号
+        pid->Dout = -pid->Kd * gyro; 
+        
+        // 微分滤波器 (对 Gyro 数据进行滤波)
+        if (pid->Improve & PID_DerivativeFilter)
+            f_Derivative_Filter(pid);
+
+        // 积分限幅
+        if (pid->Improve & PID_Integral_Limit)
+            f_Integral_Limit(pid);
+
+        // 3. 计算总输出
+        pid->Iout += pid->ITerm;                  // 累加积分
+        pid->Output = pid->Pout + pid->Iout + pid->Dout; 
+
+        // 输出滤波
+        if (pid->Improve & PID_OutputFilter)
+            f_Output_Filter(pid);
+
+        // 输出限幅
+        f_Output_Limit(pid);
+    }
+    else // 进入死区
+    {
+        pid->Output = 0;
+        pid->ITerm = 0;
+        pid->Iout = 0;
+    }
+
+    // 4. 保存当前数据 (为滤波器等提供历史数据)
     pid->Last_Measure = pid->Measure;
     pid->Last_Output = pid->Output;
     pid->Last_Dout = pid->Dout;
