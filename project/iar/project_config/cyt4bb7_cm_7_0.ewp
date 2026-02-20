@@ -382,6 +382,7 @@
                     <state>$PROJ_DIR$\..\..\code\Moudle\algorithm</state>
                     <state>$PROJ_DIR$\..\..\code\APP</state>
                     <state>$PROJ_DIR$\..\..\code\Moudle\ServoMotor</state>
+                    <state>$PROJ_DIR$\..\..\code\Moudle\KScalculat</state>
                 </option>
                 <option>
                     <name>CCStdIncCheck</name>
@@ -1162,6 +1163,15 @@
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Moudle\IMU\IMU_Deal.h</name>
+                </file>
+            </group>
+            <group>
+                <name>KScalculat</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\KScalculat\KSCal.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\KScalculat\KSCal.h</name>
                 </file>
             </group>
             <group>

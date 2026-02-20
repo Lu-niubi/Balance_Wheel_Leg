@@ -36,13 +36,12 @@
 
 
 #include "zf_common_headfile.h"
+#include "RemoteController.h"
 // **************************** PIT中断函数 ****************************
-void pit0_ch0_isr()                     // 定时器通道 0 周期中断服务函数      
+void pit0_ch0_isr()                    // 定时器通道 0 周期中断服务函数      
 {
     pit_isr_flag_clear(PIT_CH0);
-  
-    
-    
+   
 }
 
 void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
@@ -380,9 +379,9 @@ void uart2_isr (void)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
 
-        gnss_uart_callback();
-        
-        
+        // gnss_uart_callback();
+        uint8_t data = Cy_SCB_UART_Get(get_scb_module(UART_2));
+        RemoteController_ReceiveByte(data);        
     }
     else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_TX_DONE)            // 串口2发送中断
     {

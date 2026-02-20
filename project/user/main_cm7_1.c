@@ -34,6 +34,7 @@
 ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
+#include "RemoteController.h" 
 // 打开新的工程或者工程移动了位置务必执行以下操作
 // 第一步 关闭上面所有打开的文件
 // 第二步 project->clean  等待下方进度条走完
@@ -52,17 +53,15 @@ int main(void)
     // 此处编写用户代码 例如外设初始化代码等
 
 
-    
-
+    RemoteController_Init();
     // 此处编写用户代码 例如外设初始化代码等
     while(true)
     {
         // 此处编写需要循环执行的代码
         
-
-      
-      
-        // 此处编写需要循环执行的代码
+    // system_delay_ms(1000);
+    // printf("JoyLH: %d, BtnA: %d\r\n", IPCS->M1_Pub.xbox_joy_l_hori, IPCS->M1_Pub.xbox_btn_a);      
+    // 此处编写需要循环执行的代码
     }
 }
 
