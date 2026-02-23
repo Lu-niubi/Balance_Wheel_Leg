@@ -4,40 +4,40 @@
 #include "zf_common_headfile.h"
 #include "KSCal.h"
 //==============================================================================
-// ºËĞÄ²ÎÊı
+// æ ¸å¿ƒå‚æ•°
 //==============================================================================
-#define FUSION_DT           0.001f          // ÔËĞĞÖÜÆÚ 1ms (1000Hz)
-#define GYRO_LSB_2000DPS    16.4f           // 2000dps ÁéÃô¶È
-#define ACC_LSB_8G          4096.0f         // 8g ÁéÃô¶È
+#define FUSION_DT           0.001f          // è¿è¡Œå‘¨æœŸ 1ms (1000Hz)
+#define GYRO_LSB_2000DPS    16.4f           // 2000dps çµæ•åº¦
+#define ACC_LSB_8G          4096.0f         // 8g çµæ•åº¦
 
-// --- Mahony Ëã·¨²ÎÊı ---
-#define KP_NORMAL           0.8f            // Õı³£±ÈÀıÔöÒæ0.8
-#define KI_NORMAL           0.002f          // Õı³£»ı·ÖÔöÒæ0.2
-#define KP_INIT             20.0f           // ³õÊ¼»¯¿ìËÙÊÕÁ²ÔöÒæ
+// --- Mahony ç®—æ³•å‚æ•° ---
+#define KP_NORMAL           0.8f            // æ­£å¸¸æ¯”ä¾‹å¢ç›Š0.8
+#define KI_NORMAL           0.002f          // æ­£å¸¸ç§¯åˆ†å¢ç›Š0.2
+#define KP_INIT             20.0f           // åˆå§‹åŒ–å¿«é€Ÿæ”¶æ•›å¢ç›Š
 
-// --- ¿¹¸ÉÈÅãĞÖµ ---
+// --- æŠ—å¹²æ‰°é˜ˆå€¼ ---
 #define ACC_MIN_G           0.85f           
 #define ACC_MAX_G           1.15f           
 
-// --- Smart Yaw (ZÖá·ÀÆ¯ÒÆ) ---
-#define YAW_DEADZONE        0.05f           // rad/s£¬ÂÔÎ¢µ÷´óËÀÇø
+// --- Smart Yaw (Zè½´é˜²æ¼‚ç§») ---
+#define YAW_DEADZONE        0.05f           // rad/sï¼Œç•¥å¾®è°ƒå¤§æ­»åŒº
 
 typedef struct
 {
-    // Êä³öÊı¾İ
+    // è¾“å‡ºæ•°æ®
     float pitch;
     float roll;
     float yaw;
     
-    // ÂË²¨/È¥Æ«ºóµÄ½ÇËÙ¶È (rad/s)
+    // æ»¤æ³¢/å»ååçš„è§’é€Ÿåº¦ (rad/s)
     float gx, gy, gz;
 
-    // ÁãÆ«Êı¾İ
+    // é›¶åæ•°æ®
     float offset_gx;
     float offset_gy;
     float offset_gz;
 
-    // ÄÚ²¿×´Ì¬
+    // å†…éƒ¨çŠ¶æ€
     float q0, q1, q2, q3;
     float exInt, eyInt, ezInt;
     float yaw_offset;
@@ -47,7 +47,7 @@ typedef struct
 
 extern imu_fusion_t imu_sys;
 
-// ½Ó¿Úº¯Êı
+// æ¥å£å‡½æ•°
 void IMU_Fusion_Init(void);
 void IMU_Fusion_Update(void);
 void IMU_Gyro_Calibration(void);

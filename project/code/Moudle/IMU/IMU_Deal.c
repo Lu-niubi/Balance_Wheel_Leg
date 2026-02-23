@@ -18,7 +18,7 @@ static float InvSqrt(float x) {
 }
 
 //==============================================================================
-// 1. ÍÓÂİÒÇ×Ô¶¯Ğ£×¼ (¾²Ö¹Ğ£×¼)
+// 1. é™€èºä»ªè‡ªåŠ¨æ ¡å‡† (é™æ­¢æ ¡å‡†)
 //==============================================================================
 void IMU_Gyro_Calibration(void)
 {
@@ -31,17 +31,17 @@ void IMU_Gyro_Calibration(void)
         sum_gx += (float)imu660ra_gyro_x;
         sum_gy += (float)imu660ra_gyro_y;
         sum_gz += (float)imu660ra_gyro_z;
-        system_delay_ms(2); // ²ÉÑù¼ä¸ôĞèÒªÓëÊµ¼ÊÔËĞĞ½Ó½ü
+        system_delay_ms(2); // é‡‡æ ·é—´éš”éœ€è¦ä¸å®é™…è¿è¡Œæ¥è¿‘
     }
     
-    // ´æ´¢Ô­Ê¼ LSB ¼¶±ğµÄÆ«ÖÃ£¬»òÕßÖ±½Ó´æ´¢ rad/s ¼¶±ğµÄÆ«ÖÃ
+    // å­˜å‚¨åŸå§‹ LSB çº§åˆ«çš„åç½®ï¼Œæˆ–è€…ç›´æ¥å­˜å‚¨ rad/s çº§åˆ«çš„åç½®
     imu_sys.offset_gx = (sum_gx / samples) / GYRO_LSB_2000DPS * (M_PI / 180.0f);
     imu_sys.offset_gy = (sum_gy / samples) / GYRO_LSB_2000DPS * (M_PI / 180.0f);
     imu_sys.offset_gz = (sum_gz / samples) / GYRO_LSB_2000DPS * (M_PI / 180.0f);
 }
 
 //==============================================================================
-// 2. ³õÊ¼»¯
+// 2. åˆå§‹åŒ–
 //==============================================================================
 void IMU_Fusion_Init(void)
 {
@@ -49,10 +49,10 @@ void IMU_Fusion_Init(void)
     imu_sys.exInt = 0.0f; imu_sys.eyInt = 0.0f; imu_sys.ezInt = 0.0f;
     imu_sys.is_ready = 0;
 
-    // µÚÒ»²½£ºĞ£×¼ÁãÆ«£¨³µ±ØĞë¾²Ö¹£¡£©
+    // ç¬¬ä¸€æ­¥ï¼šæ ¡å‡†é›¶åï¼ˆè½¦å¿…é¡»é™æ­¢ï¼ï¼‰
     IMU_Gyro_Calibration();
 
-    // µÚ¶ş²½£º¿ìËÙÊÕÁ²¶ÔÆëÖØÁ¦
+    // ç¬¬äºŒæ­¥ï¼šå¿«é€Ÿæ”¶æ•›å¯¹é½é‡åŠ›
     safe_Kp = KP_INIT; 
     safe_Ki = 0.0f; 
 
@@ -68,7 +68,7 @@ void IMU_Fusion_Init(void)
 }
 
 //==============================================================================
-// 3. ºËĞÄ¸üĞÂº¯Êı
+// 3. æ ¸å¿ƒæ›´æ–°å‡½æ•°
 //==============================================================================
 void IMU_Fusion_Update(void)
 {
@@ -77,7 +77,7 @@ void IMU_Fusion_Update(void)
     float ex, ey, ez;
     float halfT = FUSION_DT * 0.5f;
 
-    // --- 1. Êı¾İ×ª»» & ¿Û³ıÁãÆ« ---
+    // --- 1. æ•°æ®è½¬æ¢ & æ‰£é™¤é›¶å ---
     float gx = ((float)imu660ra_gyro_x / GYRO_LSB_2000DPS * (M_PI / 180.0f)) - imu_sys.offset_gx;
     float gy = ((float)imu660ra_gyro_y / GYRO_LSB_2000DPS * (M_PI / 180.0f)) - imu_sys.offset_gy;
     float gz = ((float)imu660ra_gyro_z / GYRO_LSB_2000DPS * (M_PI / 180.0f)) - imu_sys.offset_gz;
@@ -86,7 +86,7 @@ void IMU_Fusion_Update(void)
     float ay = -(float)imu660ra_acc_y;
     float az = -(float)imu660ra_acc_z;
 
-    // --- 2. ¼ÓËÙ¶È¼Æ´¦Àí & Mahony ²¹³¥ ---
+    // --- 2. åŠ é€Ÿåº¦è®¡å¤„ç† & Mahony è¡¥å¿ ---
     float acc_norm_raw = sqrtf(ax*ax + ay*ay + az*az);
     float acc_norm_g = acc_norm_raw / ACC_LSB_8G;
 
@@ -95,12 +95,12 @@ void IMU_Fusion_Update(void)
         norm = InvSqrt(ax*ax + ay*ay + az*az);
         ax *= norm; ay *= norm; az *= norm;
 
-        // ¹À¼ÆÖØÁ¦·½Ïò
+        // ä¼°è®¡é‡åŠ›æ–¹å‘
         vx = 2.0f * (imu_sys.q1 * imu_sys.q3 - imu_sys.q0 * imu_sys.q2);
         vy = 2.0f * (imu_sys.q0 * imu_sys.q1 + imu_sys.q2 * imu_sys.q3);
         vz = imu_sys.q0 * imu_sys.q0 - imu_sys.q1 * imu_sys.q1 - imu_sys.q2 * imu_sys.q2 + imu_sys.q3 * imu_sys.q3;
 
-        // Îó²î¼ÆËã
+        // è¯¯å·®è®¡ç®—
         ex = (ay * vz - az * vy);
         ey = (az * vx - ax * vz);
         ez = (ax * vy - ay * vx);
@@ -114,14 +114,14 @@ void IMU_Fusion_Update(void)
         // gz += safe_Kp * ez + imu_sys.ezInt;
     }
 
-    // --- 3. Smart Yaw ¾²Ì¬ËøËÀ (ÔÚ»ı·ÖÇ°×îºóÖ´ĞĞ) ---
+    // --- 3. Smart Yaw é™æ€é”æ­» (åœ¨ç§¯åˆ†å‰æœ€åæ‰§è¡Œ) ---
     if (fabsf(gz) < YAW_DEADZONE) {
         gz = 0.0f;
     }
 
     imu_sys.gx = -gx; imu_sys.gy = gy; imu_sys.gz = gz;
 
-    // --- 4. ËÄÔªÊı¸üĞÂ ---
+    // --- 4. å››å…ƒæ•°æ›´æ–° ---
     float q0 = imu_sys.q0, q1 = imu_sys.q1, q2 = imu_sys.q2, q3 = imu_sys.q3;
     imu_sys.q0 += (-q1 * gx - q2 * gy - q3 * gz) * halfT;
     imu_sys.q1 += ( q0 * gx + q2 * gz - q3 * gy) * halfT;
@@ -131,12 +131,12 @@ void IMU_Fusion_Update(void)
     norm = InvSqrt(imu_sys.q0*imu_sys.q0 + imu_sys.q1*imu_sys.q1 + imu_sys.q2*imu_sys.q2 + imu_sys.q3*imu_sys.q3);
     imu_sys.q0 *= norm; imu_sys.q1 *= norm; imu_sys.q2 *= norm; imu_sys.q3 *= norm;
 
-    // --- 5. Å·À­½Ç×ª»» ---
-   // ĞŞ¸ÄºóµÄÂß¼­£ºÖ±½Ó½«Ëã·¨Ëã³öµÄ¡°ÊıÑ§Roll¡±¸ø¡°ÎïÀíPitch¡±
+    // --- 5. æ¬§æ‹‰è§’è½¬æ¢ ---
+   // ä¿®æ”¹åçš„é€»è¾‘ï¼šç›´æ¥å°†ç®—æ³•ç®—å‡ºçš„â€œæ•°å­¦Rollâ€ç»™â€œç‰©ç†Pitchâ€
    float math_pitch = asinf(-2.0f * (imu_sys.q1 * imu_sys.q3 - imu_sys.q0 * imu_sys.q2)) * 57.29578f;
    float math_roll  = atan2f(2.0f * (imu_sys.q0 * imu_sys.q1 + imu_sys.q2 * imu_sys.q3), 1.0f - 2.0f * (imu_sys.q1 * imu_sys.q1 + imu_sys.q2 * imu_sys.q2)) * 57.29578f;
 
-   imu_sys.pitch = -math_roll;  // ¹Ø¼ü£º°ÑËã³öÀ´µÄ Roll ´æ½ø Pitch
-   imu_sys.roll  = math_pitch; // °ÑËã³öÀ´µÄ Pitch ´æ½ø Roll
+   imu_sys.pitch = -math_roll;  // å…³é”®ï¼šæŠŠç®—å‡ºæ¥çš„ Roll å­˜è¿› Pitch
+   imu_sys.roll  = math_pitch; // æŠŠç®—å‡ºæ¥çš„ Pitch å­˜è¿› Roll
    imu_sys.yaw   = atan2f(2.0f * (imu_sys.q1 * imu_sys.q2 + imu_sys.q0 * imu_sys.q3), 1.0f - 2.0f * (imu_sys.q2 * imu_sys.q2 + imu_sys.q3 * imu_sys.q3)) * 57.29578f;
 }
