@@ -10,8 +10,8 @@
 //-------------------------------------------------------------------------------------------------------------------
 // 控制类型，注意只能选择一个，不选的那个要注释掉
 //-------------------------------------------------------------------------------------------------------------------
-#define USE_LQR_CONTROL    // 使用 LQR 平衡控制
-//#define USE_PID_CONTROL // 使用 PID 平衡控制
+//#define USE_LQR_CONTROL    // 使用 LQR 平衡控制
+#define USE_PID_CONTROL // 使用 PID 平衡控制
 
 //-------------------------------------------------------------------------------------------------------------------
 //  宏定义 & 物理参数
@@ -48,13 +48,16 @@ extern float Leg;
 extern float k_out[4];
 void Motor_Init(void);
 void Motor_Set_Duty(int16_t left_duty, int16_t right_duty);
+//获取到的最后速度rpm已经归一化前进为正值
 int16_t Motor_Get_Left_Speed(void);
+//获取到的最后速度rpm已经归一化前进为正值
 int16_t Motor_Get_Right_Speed(void);
 void Motor_Reset_State(void);
 
 #ifdef USE_LQR_CONTROL
-// LQR 平衡控制核心函数
-void Motor_LQR_Balance_Control(float leg_length, float imu_pitch, float imu_gyro);
+void Motor_LQR_Init(void); // LQR 参数初始化
+// LQR 平衡控制核心函数 (含速度环 & 转向环)
+void Motor_LQR_Balance_Control(float leg_length, float imu_pitch, float imu_gyro, float imu_yaw_gyro);
 #endif
 
 #ifdef USE_PID_CONTROL

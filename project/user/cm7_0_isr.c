@@ -44,7 +44,7 @@
 // 机械中值偏移 (Mechanical Zero Offset)
 // 如果车子直立静止时，pitch 不是 0 (比如是 -2.5度)，在这里填入 -2.5f
 // 作用：让 LQR 认为 -2.5度 才是“平衡点”，防止车子为了归零而一直跑往前冲调大。往后调小
-#define PITCH_OFFSET 2.8f//2.5//3.8
+#define PITCH_OFFSET 3.8f//2.5//3.8//2.8
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr(void)
 {
@@ -65,16 +65,11 @@ void pit0_ch0_isr(void)
 
     // 4. 控制入口
 #ifdef USE_LQR_CONTROL
-    count++;
-    if (count>=5)
-    {
-        count = 0;
-        Motor_LQR_Balance_Control(0.04123f, pitch_rad, gyro_rad_s);
-    }
+    Motor_LQR_Balance_Control(0.04123f, pitch_rad, gyro_rad_s, imu_sys.gz);
 #endif
 
 #ifdef USE_PID_CONTROL
-   //Motor_PID_Balance_Control(pitch_deg, imu_sys.gx, imu_sys.gz);
+   Motor_PID_Balance_Control(pitch_deg, imu_sys.gx, imu_sys.gz);
 #endif
 }
 void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      

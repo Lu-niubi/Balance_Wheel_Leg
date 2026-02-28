@@ -39,31 +39,9 @@
 #include "ShareData.h"
 #include "Servo.h"
 #include "KSCal.h"
-// 打开新的工程或者工程移动了位置务必执行以下操作
-// 第一步 关闭上面所有打开的文件
-// 第二步 project->clean  等待下方进度条走完
 
-// *************************** 例程硬件连接说明 ***************************
-// 使用逐飞科技 tc264 V2.6主板 按照下述方式进行接线
-//      模块引脚    单片机引脚
-//      RX          查看 small_driver_uart_control.h 中 SMALL_DRIVER_TX  宏定义 默认 P10_1
-//      TX          查看 small_driver_uart_control.h 中 SMALL_DRIVER_RX  宏定义 默认 P10_0
-//      GND         GND
-
-
-// *************************** 例程测试说明 ***************************
-// 1.核心板烧录完成本例程 主板电池供电 连接 CYT2BL3 FOC 双驱
-// 2.如果初次使用 请先点击双驱上的MODE按键 以矫正零点位置 矫正时 电机会发出音乐
-// 3.可以在逐飞助手上位机上看到如下串口信息：
-//      left speed:xxxx, right speed:xxxx
-// 如果发现现象与说明严重不符 请参照本文件最下方 例程常见问题说明 进行排查
 
 // **************************** 代码区域 ****************************
-
-#define MAX_DUTY            (30 )                                               // 最大 MAX_DUTY% 占空比
-
-int8 duty = 0;
-bool dir = true;
 
 int main(void)
 {
@@ -129,13 +107,14 @@ int main(void)
         
         // Left_FiveBar_IK_Degree_Interface(50,deg,&angle1,&angle4);
         // Right_FiveBar_IK_Degree_Interface(50,deg,&angle1,&angle4);
-        //  printf("%f,%f\r\n",imu_sys.pitch,2.8);
-        angle_step++;
-        if (angle_step>=1000)
-        {
-        angle_step = 0;
-         printf("%f,%f,%f,%f\r\n",k_out[0],k_out[1],k_out[2],k_out[3]);
-        }
+        // printf("%.2f,%.2f,%.4f\n",2.8,imu_sys.pitch,imu_sys.gx);
+        printf("%f\n",outtest);
+        // angle_step++;
+        // if (angle_step>=1000)
+        // {
+        // angle_step = 0;
+        //  printf("%f,%f,%f,%f\r\n",k_out[0],k_out[1],k_out[2],k_out[3]);
+        // }
         
         // 为了串口调试看着舒服，用了多行打印
         // system_delay_ms(1000);

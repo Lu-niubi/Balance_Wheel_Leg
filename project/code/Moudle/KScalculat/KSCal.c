@@ -279,7 +279,7 @@ int Left_FiveBar_IK_Degree_Interface(float L0_mm, float phi0_deg, float* out_deg
 
         
         Servo_SetTarget(SERVO_ID_1_LD,Left_Servo_Angle);
-        Servo_SetAngle_Direct(SERVO_CH4_PIN,Right_Servo_Angle);
+        Servo_SetTarget(SERVO_ID_4_LU,Right_Servo_Angle);
         // Servo_SetAngle(SERVO_CH1_PIN,Left_Servo_Angle);
         // Servo_SetAngle(SERVO_CH4_PIN,Right_Servo_Angle);
         return 0;

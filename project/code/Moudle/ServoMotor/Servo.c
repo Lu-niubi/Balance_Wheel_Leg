@@ -46,7 +46,7 @@ typedef struct {
 static Servo_Ctrl_t Servo_List[SERVO_NUM_MAX];
 
 /**
- * @brief 初始化舵机模块
+ * @brief 初始化舵机模块,也就是腿平的时候舵机角度为90度
  */
 void Servo_Init(void)
 {
