@@ -55,8 +55,8 @@ float k_out[4] = {0,0,0,0};
   #define GYRO_KD    0.0f
 
 // 3. 最外环：速度环 (输入: 速度, 输出: 目标角度)
-#define SPD_KP    0.08f   //非常小
-#define SPD_KI    0.005f  // 积分也要很小
+#define SPD_KP    0.1f   //非常小
+#define SPD_KI    0.01f  // 积分也要很小
 #define SPD_KD    0.0f     // 速度环通常不需要 D
 #define SPD_MAX_PITCH  20.0f // 速度环最大允许输出多少度倾角安全限制
 
@@ -498,12 +498,12 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     static float target_gyro_rate = 0.0f;   // 来自角度环
     float balance_pwm_out = 0.0f;    // 来自角速度环
 
-    // 0. 倒地保护
-    // if (fabsf(imu_pitch) > 60.0f || IPCS->M1_Pub.xbox_btn_a == 1)
-    // {
-    //     Motor_Reset_State();
-    //     return;
-    // }
+    //0. 倒地保护
+    if (fabsf(imu_pitch) > 45.0f || IPCS->M1_Pub.xbox_btn_a == 1)
+    {
+        Motor_Reset_State();
+        return;
+    }
 
     // ============================================================
     // 1. 最外环：速度环 (10ms 执行一次)
