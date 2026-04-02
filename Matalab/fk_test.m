@@ -1,7 +1,7 @@
 clc; clear; close all;
 
 %% === 用户输入区域 ===
-input_angle_1_deg = 180;  % 左电机角度 (相对于X轴正方向)
+input_angle_1_deg = 100;  % 左电机角度 (相对于X轴正方向)
 input_angle_4_deg = 0;   % 右电机角度 (相对于X轴正方向)
 
 %% === 计算过程 ===

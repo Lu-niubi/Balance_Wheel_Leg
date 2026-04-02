@@ -4,6 +4,7 @@
 #include <math.h>
 #include "ShareData.h"
 #include "KSCal.h"
+#include <stdint.h>
 //-------------------------------------------------------------------------------------------------------------------
 //  LQR 拟合参数 (BDS3620, 85g轮组, R=34mm)
 //-------------------------------------------------------------------------------------------------------------------
@@ -368,7 +369,6 @@ void Motor_LQR_Balance_Control(float leg_length, float imu_pitch, float imu_gyro
         float wish_leg = target_leg_angle;
         Left_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
         Right_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
-
         // 轮腿解耦：目标 Pitch 锁死为 0，重心偏移已由逆解完成
         target_pitch_angle = 0.0f;
     }
@@ -499,7 +499,7 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     float balance_pwm_out = 0.0f;    // 来自角速度环
 
     //0. 倒地保护
-    if (fabsf(imu_pitch) > 45.0f || IPCS->M1_Pub.xbox_btn_a == 1)
+    if (fabsf(imu_pitch) > 40.0f || IPCS->M1_Pub.xbox_btn_a == 1)
     {
         Motor_Reset_State();
         return;

@@ -11,7 +11,8 @@ typedef struct
     struct
     {
         volatile float target_speed;    
-        volatile int   run_mode;            
+        volatile int   run_mode;
+           
     } M0_Pub;
 
     // ==========================================
