@@ -380,8 +380,8 @@ void uart2_isr (void)
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
 
         // gnss_uart_callback();
-        uint8_t data = Cy_SCB_UART_Get(get_scb_module(UART_2));
-        RemoteController_ReceiveByte(data);        
+        // uint8_t data = Cy_SCB_UART_Get(get_scb_module(UART_2));
+        // RemoteController_ReceiveByte(data);        
     }
     else if(Cy_SCB_GetTxInterruptMask(get_scb_module(UART_2)) & CY_SCB_UART_TX_DONE)            // 串口2发送中断
     {

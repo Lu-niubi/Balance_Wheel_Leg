@@ -406,7 +406,7 @@ void uart2_isr (void)
     {
         Cy_SCB_ClearRxInterrupt(get_scb_module(UART_2), CY_SCB_UART_RX_NOT_EMPTY);              // 清除接收中断标志位
 
-//        gnss_uart_callback();
+       gnss_uart_callback();
         
         
         

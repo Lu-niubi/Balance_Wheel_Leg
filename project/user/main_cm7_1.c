@@ -53,7 +53,7 @@ int main(void)
     // 此处编写用户代码 例如外设初始化代码等
 
 
-    RemoteController_Init();
+    // RemoteController_Init();
     // 此处编写用户代码 例如外设初始化代码等
     while(true)
     {

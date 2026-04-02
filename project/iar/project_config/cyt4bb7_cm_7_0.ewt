@@ -1461,12 +1461,30 @@
                 </file>
             </group>
             <group>
+                <name>GPS</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\GPS\GPS.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\GPS\GPS.h</name>
+                </file>
+            </group>
+            <group>
                 <name>IMU</name>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Moudle\IMU\IMU_Deal.c</name>
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Moudle\IMU\IMU_Deal.h</name>
+                </file>
+            </group>
+            <group>
+                <name>IPS200</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\IPS200\IPS200.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\IPS200\IPS200.h</name>
                 </file>
             </group>
             <group>
