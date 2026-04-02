@@ -1,5 +1,5 @@
 #include "IPS200.h"
-
+#include "stdio.h"
 // IPS200 显示模块封装
 // 底层由 zf_device_ips200 驱动实现（并口 8080 模式）
 // GNSS 数据来源于 zf_device_gnss 的全局结构体 gnss
@@ -38,4 +38,15 @@ void IPS200_ShowGNSS(void)
     ips200_show_uint(120, 16*4, gnss.satellite_used, 5);
 
     ips200_show_float(  0, 16*5, gnss.height,    4, 6);
+    printf("GNSS: %d-%d-%d %d:%d:%d state=%d lat=%d.%d.%d lon=%d.%d.%d spd=%.2f dir=%.2f sat=%d alt=%.2f\n",
+           gnss.time.year, gnss.time.month, gnss.time.day,
+           gnss.time.hour, gnss.time.minute, gnss.time.second,
+           gnss.state,
+           gnss.latitude_degree, gnss.latitude_cent, gnss.latitude_second,
+           gnss.longitude_degree, gnss.longitude_cent, gnss.longitude_second,
+           gnss.speed,
+           gnss.direction,
+           gnss.satellite_used,
+           gnss.height);
+
 }

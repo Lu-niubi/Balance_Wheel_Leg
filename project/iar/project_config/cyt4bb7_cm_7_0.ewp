@@ -716,7 +716,7 @@
             <data>
                 <extensions></extensions>
                 <cmdline></cmdline>
-                <hasPrio>200</hasPrio>
+                <hasPrio>1</hasPrio>
                 <buildSequence>inputOutputBased</buildSequence>
             </data>
         </settings>
@@ -1134,6 +1134,18 @@
             <file>
                 <name>$PROJ_DIR$\..\..\code\APP\chassic.h</name>
             </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\APP\Menu.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\APP\Menu.h</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\APP\TuneCmd.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\APP\TuneCmd.h</name>
+            </file>
         </group>
         <group>
             <name>BSP</name>
@@ -1210,6 +1222,15 @@
                 </file>
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Moudle\ServoMotor\Servo.h</name>
+                </file>
+            </group>
+            <group>
+                <name>Vison</name>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\Vison\Vison.h</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\Vison\Vsion.c</name>
                 </file>
             </group>
         </group>

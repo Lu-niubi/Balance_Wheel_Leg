@@ -41,6 +41,9 @@
 #include "KSCal.h"
 #include "GPS.h"
 #include "IPS200.h"
+#include "TuneCmd.h"
+#include "Menu.h"
+#include "zf_device_key.h"
 
 
 // **************************** 代码区域 ****************************
@@ -63,7 +66,7 @@ int main(void)
     float angle1 = 0;
     float angle4 = 0;
     //2.1 GPS 和 IPS200 初始化
-    GPS_Init();
+    // GPS_Init();
     IPS200_Init();
     system_delay_ms(500);
     // 2.2 舵机机驱动初始化
@@ -94,10 +97,32 @@ int main(void)
     Motor_Reset_State();
     system_delay_ms(500);
     // -------------------------------------------------------------------------
-    // 4. 开启控制中断 (最后一步)
+    // 4. 按键 & 菜单初始化
     // -------------------------------------------------------------------------
-    pit_ms_init(PIT_CH0,1);
+    key_init(10);        // 10ms 扫描周期，配合 PIT_CH2 调用
+    Menu_Init();
+    printf("\r\nMenu OK.");
+
+    // -------------------------------------------------------------------------
+    // 5. 开启非控制类中断 (舵机、按键扫描)
+    // -------------------------------------------------------------------------
     pit_ms_init(PIT_CH1,5);
+    pit_ms_init(PIT_CH2,10);  // 10ms 按键扫描
+
+    // -------------------------------------------------------------------------
+    // 6. 启动预调 PID 阶段：阻塞直到用户按 KEY_3 确认开始
+    // -------------------------------------------------------------------------
+    printf("\r\nPre-tune PID: [0]-  [1]+  [2]Confirm&Next (4 params)\r\n");
+    while (!Menu_IsStartupDone())
+    {
+        Menu_Process();
+    }
+
+    // -------------------------------------------------------------------------
+    // 7. 开启控制中断 (预调完成后才启动)
+    // -------------------------------------------------------------------------
+    Motor_Reset_State();
+    pit_ms_init(PIT_CH0,1);
 
     float angle = 90;
     float angle_step = 10.0f;
@@ -106,12 +131,23 @@ int main(void)
     {
         SCB_InvalidateDCache_by_Addr((void *)&IPCS->M1_Pub, sizeof(IPCS->M1_Pub));
 
-        // GPS 数据轮询：有新帧则解析并刷新屏幕
-        if(GPS_Update())
-        {
-            IPS200_ShowGNSS();
-        }
+        // // 处理串口调参命令
+        // TuneCmd_Process();
 
+        // TuneCmd_Process();
+        Menu_Process();
+
+        // GPS 数据轮询：有新帧则解析并刷新屏幕
+        // // if(GPS_Update())
+        // // {
+        // //   IPS200_ShowGNSS();
+        // // }
+        // static uint32_t print_tick = 0;
+        // if (++print_tick >= 50)   // 主循环约1ms/次，50次 = 约50ms，20Hz
+        // {
+        //     print_tick = 0;
+        //     printf("D:%.2f,%.2f,%.4f\n", -8.0f, imu_sys.pitch, imu_sys.gx);
+        // }
         //  system_delay_ms(100);
         // deg= deg+angle_step;
         // if (deg<=40 || deg>=140)

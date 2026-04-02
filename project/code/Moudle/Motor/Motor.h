@@ -2,7 +2,8 @@
 #define _MOTOR_H_
 
 #include "stdint.h"
-#include "small_driver_uart_control.h" 
+#include "small_driver_uart_control.h"
+#include "controller.h"
 
 
 //中等高度下
@@ -46,6 +47,14 @@ extern float outtest;
 extern float y,x;
 extern float Leg;
 extern float k_out[4];
+
+// 动态调参全局变量（可通过串口修改）
+extern float GYRO_KP;
+extern float ANG_KP;
+extern float ANG_KI;
+extern float ANG_KD;
+extern float GYRO_KI;
+extern float GYRO_KD;
 void Motor_Init(void);
 void Motor_Set_Duty(int16_t left_duty, int16_t right_duty);
 //获取到的最后速度rpm已经归一化前进为正值
@@ -53,6 +62,10 @@ int16_t Motor_Get_Left_Speed(void);
 //获取到的最后速度rpm已经归一化前进为正值
 int16_t Motor_Get_Right_Speed(void);
 void Motor_Reset_State(void);
+
+// 供 TuneCmd 动态调参使用
+PIDInstance* Motor_Get_Angle_PID(void);
+PIDInstance* Motor_Get_Gyro_PID(void);
 
 #ifdef USE_LQR_CONTROL
 void Motor_LQR_Init(void); // LQR 参数初始化

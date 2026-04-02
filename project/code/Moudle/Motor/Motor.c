@@ -47,17 +47,22 @@ float k_out[4] = {0,0,0,0};
 // #define ANG_KI    0.04f     //0.55  0.04
 // #define ANG_KD    0.09f     // 通常设为0，因为微分作用由内环(角速度)承担了 // 0.01//1.88 0.09
 
-// 脚本调参
-  #define GYRO_KP    191.433409f
-  #define ANG_KP     1.321422f
-  #define ANG_KI     0.005641f
-  #define ANG_KD     0.0508300f
-  #define GYRO_KI    0.0f     
-  #define GYRO_KD    0.0f
+// 脚本调参 —— 全局变量，可通过串口动态修改
+float GYRO_KP = 260.0f;
+float ANG_KP  = 1.72f;
+float ANG_KI  = 0.008f;
+float ANG_KD  = 0.06f;
+float GYRO_KI = 0.0f;
+float GYRO_KD = 0.0f;
+
+// #define GYRO_KP    260.0f   // 调低底层硬度，减少高频震动
+// #define ANG_KP     1.8//3.5f    // 稍微降低回正力度
+// #define ANG_KI     0.00f     // 调试阶段建议先给0，排除干扰
+// #define ANG_KD     0.015f    // 适中的阻尼
 
 // 3. 最外环：速度环 (输入: 速度, 输出: 目标角度)
-#define SPD_KP    0.1f   //非常小
-#define SPD_KI    0.01f  // 积分也要很小
+#define SPD_KP    0.0f   //非常小
+#define SPD_KI    0.0f  // 积分也要很小
 #define SPD_KD    0.0f     // 速度环通常不需要 D
 #define SPD_MAX_PITCH  20.0f // 速度环最大允许输出多少度倾角安全限制
 
@@ -249,6 +254,10 @@ void Motor_Reset_State(void)
     // 强制关闭电机
     Motor_Set_Duty(0, 0);
 }
+
+PIDInstance* Motor_Get_Angle_PID(void) { return &pid_angle; }
+PIDInstance* Motor_Get_Gyro_PID(void)  { return &pid_gyro;  }
+
 #ifdef USE_LQR_CONTROL
 // -------------------------------------------------------------------------
 // LQR 模式初始化：用 PIDInit 配置速度环和转向环
@@ -491,71 +500,71 @@ void Motor_PID_Init(void)
 // -------------------------------------------------------------------------
 void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_yaw_gyro_rad)
 {
-    static uint8_t speed_loop_cnt = 0;
-    static uint8_t angle_loop_cnt = 0;
+    static uint8 speed_loop_cnt = 0;
+    static uint8 angle_loop_cnt = 0;
     // 串级信号流变量
     static float target_pitch_angle = 0.0f; // 来自速度环
     static float target_gyro_rate = 0.0f;   // 来自角度环
     float balance_pwm_out = 0.0f;    // 来自角速度环
 
     //0. 倒地保护
-    if (fabsf(imu_pitch) > 40.0f || IPCS->M1_Pub.xbox_btn_a == 1)
-    {
-        Motor_Reset_State();
-        return;
-    }
+    // if (fabsf(imu_pitch) > 40.0f || IPCS->M1_Pub.xbox_btn_a == 1)
+    // {
+    //     Motor_Reset_State();
+    //     return;
+    // }
 
     // ============================================================
     // 1. 最外环：速度环 (10ms 执行一次)
     // 功能：根据摇杆控制腿部角度，改变重心
     // ============================================================
-    speed_loop_cnt++;
-    if (speed_loop_cnt >= 10) 
-    {
-        speed_loop_cnt = 0;
+    // speed_loop_cnt++;
+    // if (speed_loop_cnt >= 10) 
+    // {
+    //     speed_loop_cnt = 0;
 
-        // --- Step 1.1: 摇杆数据清洗 ---
-        // 获取竖直摇杆 (控制前后)
-        int16_t joy_v_raw = IPCS->M1_Pub.xbox_joy_l_vert;
-        // 使用专用函数映射到 -1.0 ~ 1.0
-        float speed_ratio = Map_Strange_Joystick(joy_v_raw, 1); 
-        y = speed_ratio;
-        // 计算目标速度 (单位: 编码器数值/PWM量级)
-        float target_speed = speed_ratio * MAX_TARGET_SPEED * 0.25;
+    //     // --- Step 1.1: 摇杆数据清洗 ---
+    //     // 获取竖直摇杆 (控制前后)
+    //     int16_t joy_v_raw = IPCS->M1_Pub.xbox_joy_l_vert;
+    //     // 使用专用函数映射到 -1.0 ~ 1.0
+    //     float speed_ratio = Map_Strange_Joystick(joy_v_raw, 1); 
+    //     y = speed_ratio;
+    //     // 计算目标速度 (单位: 编码器数值/PWM量级)
+    //     float target_speed = speed_ratio * MAX_TARGET_SPEED * 0.25;
         
-        // 目标速度滤波 (使加减速平滑)
-        target_speed_filter = 0.9f * target_speed_filter + 0.1f * target_speed;
+    //     // 目标速度滤波 (使加减速平滑)
+    //     target_speed_filter = 0.9f * target_speed_filter + 0.1f * target_speed;
 
-        // 获取实际速度 (左右轮平均)
-        float current_speed = (Motor_Get_Left_Speed() + Motor_Get_Right_Speed()) / 2.0f;
-        actual_speed_filter = 0.7f * actual_speed_filter + 0.3f * current_speed;
+    //     // 获取实际速度 (左右轮平均)
+    //     float current_speed = (Motor_Get_Left_Speed() + Motor_Get_Right_Speed()) / 2.0f;
+    //     actual_speed_filter = 0.7f * actual_speed_filter + 0.3f * current_speed;
 
-        // --- Step 1.2: 速度环 PID 计算 ---
-        // 这里的 PID 输出将作为“腿部角度的偏移量”
-        float speed_pid_out = PIDCalculate(&pid_velo, actual_speed_filter, 0);
-        outtest = speed_pid_out;
-        // --- Step 1.3: 腿部逆解控制 (重心偏移) ---
-        // 逻辑：想前进(PID>0) -> 腿后摆(Pi0<90) -> 摆杆前倾
-        // 基础角度 90度 - PID输出
-        float target_leg_angle = 90.0f-speed_pid_out;
+    //     // --- Step 1.2: 速度环 PID 计算 ---
+    //     // 这里的 PID 输出将作为“腿部角度的偏移量”
+    //     float speed_pid_out = PIDCalculate(&pid_velo, actual_speed_filter, 0);
+    //     outtest = speed_pid_out;
+    //     // --- Step 1.3: 腿部逆解控制 (重心偏移) ---
+    //     // 逻辑：想前进(PID>0) -> 腿后摆(Pi0<90) -> 摆杆前倾
+    //     // 基础角度 90度 - PID输出
+    //     float target_leg_angle = 90.0f-speed_pid_out;
 
-        // 物理限幅 (防止机构卡死)
-        if(target_leg_angle > 150.0f) target_leg_angle = 150.0f;
-        if(target_leg_angle < 30.0f)  target_leg_angle = 30.0f;
+    //     // 物理限幅 (防止机构卡死)
+    //     if(target_leg_angle > 150.0f) target_leg_angle = 150.0f;
+    //     if(target_leg_angle < 30.0f)  target_leg_angle = 30.0f;
 
-        // 执行逆解 (假设腿长固定 41.23)
-        float dummy_deg1, dummy_deg4;
-        float wish_leg = target_leg_angle;
-        Left_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
-        Right_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
+    //     // 执行逆解 (假设腿长固定 41.23)
+    //     float dummy_deg1, dummy_deg4;
+    //     float wish_leg = target_leg_angle;
+    //     Left_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
+    //     Right_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
         
-        // 注意：在轮腿解耦模式下，目标 Pitch 角度始终锁死为 0 (或者机械中值偏移)
-        target_pitch_angle = 0.0f; 
-    }
+    //     // 注意：在轮腿解耦模式下，目标 Pitch 角度始终锁死为 0 (或者机械中值偏移)
+    //     target_pitch_angle = 0.0f; 
+    // }
+    // // // ============================================================
+    // // 2. 中间环：角度环 (5ms 执行)
+    // // 目标：目标角度 -> 输出：目标角速度 (Target Gyro Rate)
     // // ============================================================
-    // 2. 中间环：角度环 (5ms 执行)
-    // 目标：目标角度 -> 输出：目标角速度 (Target Gyro Rate)
-    // ============================================================
     angle_loop_cnt++;
     if (angle_loop_cnt >= 5) 
     {

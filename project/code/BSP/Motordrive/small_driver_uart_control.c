@@ -185,9 +185,7 @@ void small_driver_uart_init(void)
 
     small_driver_set_duty(0, 0);                                                                // 设置0占空比
 
-    small_driver_get_speed(); 
-    
-    small_driver_cmd_get_encoder();
+    small_driver_get_speed();
 }
 //-------------------------------------------------------------------------------------------------------------------
 // 函数名称     小驱动 发送 GET-ENCODER 指令
