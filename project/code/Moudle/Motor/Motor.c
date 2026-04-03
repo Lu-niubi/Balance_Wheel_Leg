@@ -88,6 +88,11 @@ int16_t Right_motor_duty = 0;
 float outtest = 0;
 float y,x = 0;
 float Leg = 0;
+
+// ─── 外部可控的速度/航向目标 ───
+static float ext_speed_target  = 0.0f;   // 外部设定的目标速度 (RPM)，0 = 不动
+static float ext_yaw_target    = 0.0f;   // 外部设定的目标航向 (度)
+static uint8_t ext_control_enabled = 0;  // 1 = 使用外部目标, 0 = 使用原有逻辑(手柄)
 //-------------------------------------------------------------------------------------------------------------------
 //  内部变量
 //-------------------------------------------------------------------------------------------------------------------
@@ -263,6 +268,27 @@ void Motor_Reset_State(void)
 
 PIDInstance* Motor_Get_Angle_PID(void) { return &pid_angle; }
 PIDInstance* Motor_Get_Gyro_PID(void)  { return &pid_gyro;  }
+
+// ─── 外部目标控制接口 ───
+void Motor_Set_Ext_Control(uint8_t enable)
+{
+    ext_control_enabled = enable;
+    if (!enable)
+    {
+        ext_speed_target = 0.0f;
+        ext_yaw_target   = 0.0f;
+    }
+}
+
+void Motor_Set_Ext_Speed(float speed_rpm)
+{
+    ext_speed_target = speed_rpm;
+}
+
+void Motor_Set_Ext_Yaw(float yaw_deg)
+{
+    ext_yaw_target = yaw_deg;
+}
 
 #ifdef USE_LQR_CONTROL
 // -------------------------------------------------------------------------
@@ -548,8 +574,9 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
         actual_speed_filter = 0.7f * actual_speed_filter + 0.3f * current_speed;
 
         // --- Step 1.2: 速度环 PID 计算 ---
-        // 这里的 PID 输出将作为“腿部角度的偏移量”
-        float speed_pid_out = PIDCalculate(&pid_velo, actual_speed_filter, 0);
+        // 这里的 PID 输出将作为”腿部角度的偏移量”
+        float spd_ref = ext_control_enabled ? ext_speed_target : 0.0f;
+        float speed_pid_out = PIDCalculate(&pid_velo, actual_speed_filter, spd_ref);
         outtest = speed_pid_out;
         // --- Step 1.3: 腿部逆解控制 (重心偏移) ---
         // 逻辑：想前进(PID>0) -> 腿后摆(Pi0<90) -> 摆杆前倾
@@ -596,8 +623,9 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     // ============================================================
     // 4. 转向环 & 输出混合
     // ============================================================
-    
-    float turn_out = PIDCalculate(&pid_turn, imu_sys.yaw, 0);
+
+    float yaw_ref = ext_control_enabled ? ext_yaw_target : 0.0f;
+    float turn_out = PIDCalculate(&pid_turn, imu_sys.yaw, yaw_ref);
 
     float motor_l = balance_pwm_out + turn_out;
     float motor_r = balance_pwm_out - turn_out;

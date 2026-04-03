@@ -43,6 +43,7 @@
 #include "IPS200.h"
 #include "TuneCmd.h"
 #include "Menu.h"
+#include "chassic.h"
 #include "zf_device_key.h"
 
 
@@ -101,6 +102,7 @@ int main(void)
     // -------------------------------------------------------------------------
     key_init(10);        // 10ms 扫描周期，配合 PIT_CH2 调用
     Menu_Init();
+    Chassic_Init();      // 科目1 惯导模块初始化
     printf("\r\nMenu OK.");
 
     // -------------------------------------------------------------------------

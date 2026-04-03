@@ -10,6 +10,7 @@
 #include "IMU_Deal.h"
 #include "Motor.h"
 #include "controller.h"
+#include "chassic.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -43,14 +44,16 @@ typedef enum
     STATE_PID_LIST,        // PID 参数列表
     STATE_PID_EDIT,        // 正在编辑某个 PID 参数
     STATE_SPEED,           // 小车速度页
+    STATE_SUBJECT1,        // 科目1 惯导子菜单
 } menu_state_t;
 
 // 主菜单条目
-#define MAIN_ITEM_COUNT  3
+#define MAIN_ITEM_COUNT  4
 static const char *s_main_items[MAIN_ITEM_COUNT] = {
     "1. IMU  Data",
     "2. PID  Params",
     "3. Speed",
+    "4. Subject1",
 };
 
 // PID 参数条目
@@ -72,6 +75,7 @@ static uint8_t      s_startup_done = 1;  // 跳过预调，直接视为已完成
 #endif
 static int8_t       s_main_sel    = 0;   // 主菜单光标
 static int8_t       s_pid_sel     = 0;   // PID 列表光标
+static int8_t       s_subj1_sel   = 0;   // 科目1子菜单光标 (0=取点, 1=启动)
 static uint8_t      s_need_redraw = 1;   // 强制刷屏标志
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -241,6 +245,80 @@ static void draw_speed_page(void)
     ips200_show_string(0, ROW(8), "[3]Back");
 }
 
+// ─── 科目1 惯导子菜单绘制 ─────────────────────────────────────────────────
+#define SUBJ1_ITEM_COUNT  2
+static const char *s_subj1_items[SUBJ1_ITEM_COUNT] = {
+    "Record Path",
+    "Start Replay",
+};
+
+static const char *chassic_state_str(chassic_state_t st)
+{
+    switch (st)
+    {
+        case CHASSIC_IDLE:        return "IDLE   ";
+        case CHASSIC_RECORDING:   return "REC... ";
+        case CHASSIC_READY:       return "READY  ";
+        case CHASSIC_STABILIZING: return "STAB.. ";
+        case CHASSIC_REPLAYING:   return "PLAY.. ";
+        case CHASSIC_DONE:        return "DONE   ";
+        default:                  return "???    ";
+    }
+}
+
+static void draw_subject1_page(void)
+{
+    char buf[32];
+
+    // 状态信息
+    chassic_state_t cst = Chassic_GetState();
+    snprintf(buf, sizeof(buf), "State: %s", chassic_state_str(cst));
+    ips200_set_color(COLOR_GREEN, COLOR_BLACK);
+    ips200_show_string(0, ROW(1), buf);
+    ips200_set_color(COLOR_WHITE, COLOR_BLACK);
+
+    // 菜单条目
+    for (int8_t i = 0; i < SUBJ1_ITEM_COUNT; i++)
+    {
+        uint16_t y = ROW(i + 2) + 4;
+        if (i == s_subj1_sel)
+        {
+            ips200_set_color(COLOR_BLACK, COLOR_SELECTED);
+            ips200_show_string(0, y, ">");
+            ips200_show_string(FONT_W, y, s_subj1_items[i]);
+            ips200_set_color(COLOR_WHITE, COLOR_BLACK);
+        }
+        else
+        {
+            ips200_show_string(0, y, " ");
+            ips200_show_string(FONT_W, y, s_subj1_items[i]);
+        }
+    }
+
+    // 数据行
+    snprintf(buf, sizeof(buf), "Pts:%4d Dist:%6.1fcm",
+             Chassic_GetRecordCount(), Chassic_GetRecordDistance());
+    ips200_show_string(0, ROW(5), buf);
+
+    if (cst == CHASSIC_RECORDING)
+    {
+        snprintf(buf, sizeof(buf), "Yaw:%+7.2f deg    ", imu_sys.yaw);
+        ips200_show_string(0, ROW(6), buf);
+    }
+    else if (cst == CHASSIC_REPLAYING || cst == CHASSIC_DONE)
+    {
+        snprintf(buf, sizeof(buf), "Progress: %3d%%    ", Chassic_GetReplayProgress());
+        ips200_show_string(0, ROW(6), buf);
+    }
+    else
+    {
+        ips200_show_string(0, ROW(6), "                    ");
+    }
+
+    ips200_show_string(0, ROW(7), "[0]Up [1]Dn [2]OK  ");
+    ips200_show_string(0, ROW(8), "[3]Back/Stop       ");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  按键读取并清除 (防止重复触发)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -385,11 +463,18 @@ void Menu_Process(void)
                     ips200_clear();
                     draw_title("  PID Params    ");
                 }
-                else
+                else if (s_main_sel == 2)
                 {
                     s_state = STATE_SPEED;
                     ips200_clear();
                     draw_title("  Speed         ");
+                }
+                else if (s_main_sel == 3)
+                {
+                    s_state = STATE_SUBJECT1;
+                    s_subj1_sel = 0;
+                    ips200_clear();
+                    draw_title(" Subject1 INS   ");
                 }
                 s_need_redraw = 1;
             }
@@ -488,6 +573,58 @@ void Menu_Process(void)
 
             if (key_pressed(KEY_4))
             {
+                s_state = STATE_MAIN_MENU;
+                s_need_redraw = 1;
+            }
+            break;
+        }
+
+        // ──────────────────────────────────────────────
+        case STATE_SUBJECT1:
+        {
+            if (s_need_redraw || do_refresh) { draw_subject1_page(); s_need_redraw = 0; }
+
+            chassic_state_t cst = Chassic_GetState();
+
+            if (key_pressed(KEY_1))      // 上
+            {
+                s_subj1_sel = (s_subj1_sel + SUBJ1_ITEM_COUNT - 1) % SUBJ1_ITEM_COUNT;
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_2)) // 下
+            {
+                s_subj1_sel = (s_subj1_sel + 1) % SUBJ1_ITEM_COUNT;
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_3)) // 确认
+            {
+                if (s_subj1_sel == 0)  // Record Path
+                {
+                    if (cst == CHASSIC_IDLE || cst == CHASSIC_DONE)
+                    {
+                        Chassic_StartRecord();
+                    }
+                    else if (cst == CHASSIC_RECORDING)
+                    {
+                        Chassic_StopRecord();
+                    }
+                }
+                else if (s_subj1_sel == 1)  // Start Replay
+                {
+                    if (cst == CHASSIC_READY)
+                    {
+                        Chassic_StartReplay();
+                    }
+                }
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_4)) // 返回 / 停止
+            {
+                if (cst == CHASSIC_RECORDING || cst == CHASSIC_STABILIZING ||
+                    cst == CHASSIC_REPLAYING)
+                {
+                    Chassic_Stop();
+                }
                 s_state = STATE_MAIN_MENU;
                 s_need_redraw = 1;
             }

@@ -67,6 +67,11 @@ void Motor_Reset_State(void);
 PIDInstance* Motor_Get_Angle_PID(void);
 PIDInstance* Motor_Get_Gyro_PID(void);
 
+// 外部目标控制接口 (惯导/科目任务使用)
+void Motor_Set_Ext_Control(uint8_t enable);   // 1=启用外部目标, 0=恢复原有逻辑
+void Motor_Set_Ext_Speed(float speed_rpm);    // 设置目标速度 (RPM)
+void Motor_Set_Ext_Yaw(float yaw_deg);        // 设置目标航向 (度)
+
 #ifdef USE_LQR_CONTROL
 void Motor_LQR_Init(void); // LQR 参数初始化
 // LQR 平衡控制核心函数 (含速度环 & 转向环)

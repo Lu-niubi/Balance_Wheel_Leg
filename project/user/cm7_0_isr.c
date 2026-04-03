@@ -38,6 +38,7 @@
 #include "IMU_Deal.h"
 #include "Motor.h"
 #include "Servo.h"
+#include "chassic.h"
 #include "zf_device_key.h"
 #ifndef PI
     #define PI 3.1415926535f
@@ -51,15 +52,16 @@ void pit0_ch0_isr(void)
 {
    static int count = 0;
    static uint8_t flag = 0;
+   static uint8_t chassic_div = 0;   // 2ms 分频计数
    pit_isr_flag_clear(PIT_CH0);
-  
+
     // 1. 获取imu数据
     imu660ra_get_acc();
     imu660ra_get_gyro();
 
     // 2. 解算
     IMU_Fusion_Update();
-    
+
    float pitch_deg = imu_sys.pitch - PITCH_OFFSET;
    float pitch_rad = pitch_deg * 3.1415926f / 180.0f;  // 角度转弧度
    float gyro_rad_s = imu_sys.gx;
@@ -72,6 +74,13 @@ void pit0_ch0_isr(void)
 #ifdef USE_PID_CONTROL
    Motor_PID_Balance_Control(pitch_deg, imu_sys.gx, imu_sys.gz);
 #endif
+
+    // 5. 科目1 惯导任务 (每 2ms 调用一次)
+    if (++chassic_div >= 2)
+    {
+        chassic_div = 0;
+        Chassic_Tick_2ms();
+    }
 }
 void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
 {

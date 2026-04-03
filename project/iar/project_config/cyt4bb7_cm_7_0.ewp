@@ -1169,6 +1169,12 @@
                 <file>
                     <name>$PROJ_DIR$\..\..\code\Moudle\algorithm\controller.h</name>
                 </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\algorithm\ins_navigation.c</name>
+                </file>
+                <file>
+                    <name>$PROJ_DIR$\..\..\code\Moudle\algorithm\ins_navigation.h</name>
+                </file>
             </group>
             <group>
                 <name>GPS</name>
