@@ -23,6 +23,10 @@
 
 INS_State_t g_ins;
 
+// 连续yaw累积 (解决±180跳变)
+static float s_yaw_continuous = 0.0f;  // 连续累积航向角 (度)
+static float s_yaw_last       = 0.0f;  // 上次原始yaw，用于计算差分
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  内部辅助
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,6 +60,8 @@ static float calc_delta_distance_cm(int16_t left_rpm, int16_t right_rpm)
 void INS_Init(void)
 {
     memset(&g_ins, 0, sizeof(g_ins));
+    s_yaw_continuous = 0.0f;
+    s_yaw_last       = 0.0f;
 }
 
 uint8_t INS_RecordTick(int16_t left_rpm, int16_t right_rpm, float yaw_deg)
@@ -65,13 +71,30 @@ uint8_t INS_RecordTick(int16_t left_rpm, int16_t right_rpm, float yaw_deg)
         return 1; // 缓冲区已满
     }
 
+    // ── yaw unwrap：把跳变的原始yaw转成连续累积值 ──────────────────────────
+    if (g_ins.point_count == 0)
+    {
+        // 第一个点：以当前yaw为基准，连续值从0开始（或直接用当前值做基准）
+        s_yaw_last       = yaw_deg;
+        s_yaw_continuous = yaw_deg;
+    }
+    else
+    {
+        float delta = yaw_deg - s_yaw_last;
+        // 把差分wrap到[-180, 180]，消除跳变
+        if (delta >  180.0f) delta -= 360.0f;
+        if (delta < -180.0f) delta += 360.0f;
+        s_yaw_continuous += delta;
+        s_yaw_last = yaw_deg;
+    }
+
     // 计算本次行驶距离并累加
     float delta = calc_delta_distance_cm(left_rpm, right_rpm);
     g_ins.total_distance_cm += delta;
 
-    // 保存航迹点
+    // 保存航迹点 —— 存连续yaw，不存原始跳变值
     g_ins.points[g_ins.point_count].distance_cm = g_ins.total_distance_cm;
-    g_ins.points[g_ins.point_count].yaw_deg     = yaw_deg;
+    g_ins.points[g_ins.point_count].yaw_deg     = s_yaw_continuous;
     g_ins.point_count++;
 
     return 0;

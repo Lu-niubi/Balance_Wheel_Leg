@@ -29,6 +29,7 @@
 
 static chassic_state_t s_state = CHASSIC_IDLE;
 static uint32_t s_stabilize_cnt = 0;   // STABILIZING 阶段计时 (2ms 计数)
+static float s_yaw_replay_offset = 0.0f; // INS坐标系→Motor坐标系的yaw偏移
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  接口实现
@@ -89,10 +90,14 @@ void Chassic_StartReplay(void)
     // 重置PID状态
     Motor_Reset_State();
 
-    // 进入稳定阶段：启用外部控制，速度=0，yaw=起始yaw
+    // 计算坐标系偏移：将INS记录的连续yaw对齐到Motor的连续yaw
+    // Motor坐标系从开机时开始累积，INS坐标系从recording开始时的raw yaw开始
+    s_yaw_replay_offset = Motor_Get_Yaw_Continuous() - g_ins.points[0].yaw_deg;
+
+    // 进入稳定阶段：启用外部控制，速度=0，yaw=起始yaw (Motor坐标系)
     Motor_Set_Ext_Control(1);
     Motor_Set_Ext_Speed(0.0f);
-    Motor_Set_Ext_Yaw(g_ins.points[0].yaw_deg);
+    Motor_Set_Ext_Yaw(g_ins.points[0].yaw_deg + s_yaw_replay_offset);
 
     s_stabilize_cnt = 0;
     s_state = CHASSIC_STABILIZING;
@@ -152,9 +157,10 @@ void Chassic_Tick_2ms(void)
 
         case CHASSIC_REPLAYING:
         {
-            // 每 2ms 推进回放，获取目标 yaw
-            float target_yaw = INS_ReplayTick(lrpm, rrpm);
-            Motor_Set_Ext_Yaw(target_yaw);
+            // 每 2ms 推进回放，获取目标 yaw (INS坐标系，连续值)
+            float target_yaw_ins = INS_ReplayTick(lrpm, rrpm);
+            // 转换到Motor坐标系后送给转向PID
+            Motor_Set_Ext_Yaw(target_yaw_ins + s_yaw_replay_offset);
 
             // 检查回放是否完成
             if (INS_IsReplayDone())

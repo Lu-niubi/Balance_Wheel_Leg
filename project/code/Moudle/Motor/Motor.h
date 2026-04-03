@@ -70,7 +70,8 @@ PIDInstance* Motor_Get_Gyro_PID(void);
 // 外部目标控制接口 (惯导/科目任务使用)
 void Motor_Set_Ext_Control(uint8_t enable);   // 1=启用外部目标, 0=恢复原有逻辑
 void Motor_Set_Ext_Speed(float speed_rpm);    // 设置目标速度 (RPM)
-void Motor_Set_Ext_Yaw(float yaw_deg);        // 设置目标航向 (度)
+void Motor_Set_Ext_Yaw(float yaw_deg);        // 设置目标航向 (度，连续累积值)
+float Motor_Get_Yaw_Continuous(void);         // 获取连续累积航向角 (无跳变)
 
 #ifdef USE_LQR_CONTROL
 void Motor_LQR_Init(void); // LQR 参数初始化

@@ -91,8 +91,13 @@ float Leg = 0;
 
 // ─── 外部可控的速度/航向目标 ───
 static float ext_speed_target  = 0.0f;   // 外部设定的目标速度 (RPM)，0 = 不动
-static float ext_yaw_target    = 0.0f;   // 外部设定的目标航向 (度)
+static float ext_yaw_target    = 0.0f;   // 外部设定的目标航向 (连续累积度)
 static uint8_t ext_control_enabled = 0;  // 1 = 使用外部目标, 0 = 使用原有逻辑(手柄)
+
+// ─── 连续yaw (无±180跳变) ───
+static float s_yaw_continuous = 0.0f;
+static float s_yaw_last       = 0.0f;
+static uint8_t s_yaw_init_done = 0;
 //-------------------------------------------------------------------------------------------------------------------
 //  内部变量
 //-------------------------------------------------------------------------------------------------------------------
@@ -288,6 +293,11 @@ void Motor_Set_Ext_Speed(float speed_rpm)
 void Motor_Set_Ext_Yaw(float yaw_deg)
 {
     ext_yaw_target = yaw_deg;
+}
+
+float Motor_Get_Yaw_Continuous(void)
+{
+    return s_yaw_continuous;
 }
 
 #ifdef USE_LQR_CONTROL
@@ -554,6 +564,22 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     static float target_gyro_rate = 0.0f;   // 来自角度环
     float balance_pwm_out = 0.0f;    // 来自角速度环
 
+    // 连续yaw追踪 (解决±180跳变问题)
+    if (!s_yaw_init_done)
+    {
+        s_yaw_continuous = imu_sys.yaw;
+        s_yaw_last = imu_sys.yaw;
+        s_yaw_init_done = 1;
+    }
+    else
+    {
+        float dyaw = imu_sys.yaw - s_yaw_last;
+        if (dyaw >  180.0f) dyaw -= 360.0f;
+        if (dyaw < -180.0f) dyaw += 360.0f;
+        s_yaw_continuous += dyaw;
+        s_yaw_last = imu_sys.yaw;
+    }
+
     //0. 倒地保护
     // if (fabsf(imu_pitch) > 40.0f || IPCS->M1_Pub.xbox_btn_a == 1)
     // {
@@ -627,7 +653,8 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     float turn_out = 0.0f;
     if (ext_control_enabled)
     {
-        turn_out = PIDCalculate(&pid_turn, imu_sys.yaw, ext_yaw_target);
+        // target来自INS回放(连续yaw)，feedback用本地连续yaw，误差自然连续无跳变
+        turn_out = PIDCalculate(&pid_turn, s_yaw_continuous, ext_yaw_target);
     }
     else
     {
@@ -635,7 +662,7 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
         pid_turn.ITerm    = 0.0f;
         pid_turn.Iout     = 0.0f;
         pid_turn.Last_Err = 0.0f;
-        ext_yaw_target    = imu_sys.yaw;
+        ext_yaw_target    = s_yaw_continuous;  // 用连续值跟踪，防止切入时突变
     }
 
     float motor_l = balance_pwm_out + turn_out;
