@@ -73,9 +73,9 @@ float GYRO_KD = 0.0f;
 #define SPD_MAX_PITCH  20.0f // 速度环最大允许输出多少度倾角安全限制
 
 // 4. 转向环参数 (输入: 摇杆差值, 输出: PWM差分)
-#define TURN_KP 1.0f
+#define TURN_KP 20.0f
 #define TURN_KI 0.0f
-#define TURN_KD 0.05f
+#define TURN_KD 3.1f
 
 // 5. 手柄映射配置
 #define JOYSTICK_DEADZONE 2000   // 摇杆死区 (防止漂移)
@@ -496,6 +496,21 @@ void Motor_PID_Init(void)
     config.Improve = PID_Integral_Limit | PID_OutputFilter;
     config.Output_LPF_RC = 0.5f;
     PIDInit(&pid_velo, &config);
+
+    // --- 4. 转向环 (Turn Loop) ---
+    config.Kp = TURN_KP;
+    config.Ki = TURN_KI;
+    config.Kd = TURN_KD;
+    config.dt = CONTROL_DT; // 1ms
+    config.MaxOut = MAX_TURN_SPEED;
+    config.IntegralLimit = 500.0f;
+    config.DeadBand = 0.0f;
+    config.Improve = PID_Integral_Limit;
+    config.Output_LPF_RC = 0.0f;
+    config.Derivative_LPF_RC = 0.0f;
+    PIDInit(&pid_turn, &config);
+
+    
 }
 // -------------------------------------------------------------------------
 // PID 平衡控制核心 (需在 pit0_ch0_isr 中调用)
@@ -529,19 +544,6 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     {
         speed_loop_cnt = 0;
 
-        // --- Step 1.1: 摇杆数据清洗 ---
-        // 获取竖直摇杆 (控制前后)
-        int16_t joy_v_raw = IPCS->M1_Pub.xbox_joy_l_vert;
-        // 使用专用函数映射到 -1.0 ~ 1.0
-        float speed_ratio = Map_Strange_Joystick(joy_v_raw, 1); 
-        y = speed_ratio;
-        // 计算目标速度 (单位: 编码器数值/PWM量级)
-        float target_speed = speed_ratio * MAX_TARGET_SPEED * 0.25;
-        
-        // 目标速度滤波 (使加减速平滑)
-        target_speed_filter = 0.9f * target_speed_filter + 0.1f * target_speed;
-
-        // 获取实际速度 (左右轮平均)
         float current_speed = (Motor_Get_Left_Speed() + Motor_Get_Right_Speed()) / 2.0f;
         actual_speed_filter = 0.7f * actual_speed_filter + 0.3f * current_speed;
 
@@ -595,24 +597,11 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     // 4. 转向环 & 输出混合
     // ============================================================
     
-    // --- Step 4.1: 摇杆数据清洗 ---
-    // 获取水平摇杆 (控制左右)
-    int16_t joy_h_raw = IPCS->M1_Pub.xbox_joy_l_hori;
-    // 使用专用函数映射到 -1.0 ~ 1.0 (正为左，负为右)
-    float turn_ratio = Map_Strange_Joystick(joy_h_raw, 0);
+    float turn_out = PIDCalculate(&pid_turn, imu_sys.yaw, 0);
 
-    // 计算目标转向速度 (PWM 差分量级)
-    // 注意：通常左推摇杆希望向左转，左轮减速右轮加速
-    float target_turn_pwm = turn_ratio * MAX_TURN_SPEED;
-
-    // --- Step 4.2: 转向 PID (简单 P 或 PD) ---
-    // 输入：Yaw轴角速度 (rad/s) * 系数， 期望：摇杆设定值
-    // 目的：让车身的旋转速度跟随摇杆的深浅
-    float turn_out = PIDCalculate(&pid_turn, imu_yaw_gyro_rad * 50.0f, target_turn_pwm);
-
-    float motor_l = balance_pwm_out; //+ turn_out;
-    float motor_r = balance_pwm_out; //- turn_out;
-    // outtest = balance_pwm_out;
+    float motor_l = balance_pwm_out + turn_out;
+    float motor_r = balance_pwm_out - turn_out;
+    // outtest = balance_pwm_out；
     int16_t final_l = -(int16_t)motor_l; // 极性根据你原来的代码保留
     int16_t final_r = (int16_t)motor_r;
     Left_motor_duty = final_l;

@@ -63,11 +63,16 @@ static const char *s_pid_items[PID_ITEM_COUNT] = {
 };
 static const float s_pid_steps[PID_ITEM_COUNT] = {10.0f, 0.2f, 0.001f, 0.01f};
 
-static menu_state_t s_state       = STATE_STARTUP_PID;
+#ifdef MENU_STARTUP_PID_TUNE
+static menu_state_t s_state        = STATE_STARTUP_PID;
+static uint8_t      s_startup_done = 0;  // 启动阶段完成标志
+#else
+static menu_state_t s_state        = STATE_MAIN_MENU;
+static uint8_t      s_startup_done = 1;  // 跳过预调，直接视为已完成
+#endif
 static int8_t       s_main_sel    = 0;   // 主菜单光标
 static int8_t       s_pid_sel     = 0;   // PID 列表光标
 static uint8_t      s_need_redraw = 1;   // 强制刷屏标志
-static uint8_t      s_startup_done = 0;  // 启动阶段完成标志
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  获取当前 PID 参数值指针 (全局变量)
@@ -257,14 +262,20 @@ void Menu_Init(void)
     ips200_set_font(IPS200_8X16_FONT);
     ips200_set_color(COLOR_WHITE, COLOR_BLACK);
     ips200_clear();
-    s_state        = STATE_STARTUP_PID;
     s_main_sel     = 0;
     s_pid_sel      = 0;
     s_need_redraw  = 1;
+#ifdef MENU_STARTUP_PID_TUNE
+    s_state        = STATE_STARTUP_PID;
     s_startup_done = 0;
     // 启动页：直接画标题，正文由 draw_pid_edit 覆盖写
     draw_title("  PRE-TUNE PID  ");
     ips200_show_string(0, ROW(1), "[0]-  [1]+  [2]Next ");
+#else
+    s_state        = STATE_MAIN_MENU;
+    s_startup_done = 1;
+    draw_title("  MAIN MENU     ");
+#endif
 }
 
 uint8_t Menu_IsStartupDone(void)
@@ -285,6 +296,13 @@ void Menu_Process(void)
         // 启动预调 PID 阶段：顺序逐一确认全部4个参数，全部确认后才开始运行
         case STATE_STARTUP_PID:
         {
+#ifndef MENU_STARTUP_PID_TUNE
+            // 宏未定义时不应进入此分支，直接跳主菜单
+            s_state = STATE_MAIN_MENU;
+            s_startup_done = 1;
+            s_need_redraw = 1;
+            break;
+#endif
             if (s_need_redraw)
             {
                 draw_pid_edit();

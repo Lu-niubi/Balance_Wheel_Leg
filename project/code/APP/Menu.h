@@ -26,6 +26,10 @@
 #ifndef _MENU_H_
 #define _MENU_H_
 
+// 启动PID预调阶段开关
+// 注释掉此行可跳过上电预调，直接进入主菜单开始运行
+// #define MENU_STARTUP_PID_TUNE
+
 #include <stdint.h>
 
 void    Menu_Init(void);

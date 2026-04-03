@@ -112,21 +112,21 @@ int main(void)
     // -------------------------------------------------------------------------
     // 6. 启动预调 PID 阶段：阻塞直到用户按 KEY_3 确认开始
     // -------------------------------------------------------------------------
+    #ifdef MENU_STARTUP_PID_TUNE
     printf("\r\nPre-tune PID: [0]-  [1]+  [2]Confirm&Next (4 params)\r\n");
     while (!Menu_IsStartupDone())
     {
         Menu_Process();
     }
-
+   #endif
     // -------------------------------------------------------------------------
     // 7. 开启控制中断 (预调完成后才启动)
     // -------------------------------------------------------------------------
     Motor_Reset_State();
+    FiveBar_IK_Degree_Interface(Leg,90,&angle1,&angle4);
+    //
     pit_ms_init(PIT_CH0,1);
 
-    float angle = 90;
-    float angle_step = 10.0f;
-    FiveBar_IK_Degree_Interface(Leg,90,&angle1,&angle4);
     while(true)
     {
         SCB_InvalidateDCache_by_Addr((void *)&IPCS->M1_Pub, sizeof(IPCS->M1_Pub));
