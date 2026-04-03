@@ -624,8 +624,19 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     // 4. 转向环 & 输出混合
     // ============================================================
 
-    float yaw_ref = ext_control_enabled ? ext_yaw_target : 0.0f;
-    float turn_out = PIDCalculate(&pid_turn, imu_sys.yaw, yaw_ref);
+    float turn_out = 0.0f;
+    if (ext_control_enabled)
+    {
+        turn_out = PIDCalculate(&pid_turn, imu_sys.yaw, ext_yaw_target);
+    }
+    else
+    {
+        // 外部控制未启用时不输出转向，同时跟踪当前 yaw 防止切入时突变
+        pid_turn.ITerm    = 0.0f;
+        pid_turn.Iout     = 0.0f;
+        pid_turn.Last_Err = 0.0f;
+        ext_yaw_target    = imu_sys.yaw;
+    }
 
     float motor_l = balance_pwm_out + turn_out;
     float motor_r = balance_pwm_out - turn_out;
