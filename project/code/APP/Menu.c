@@ -7,10 +7,13 @@
 #include "zf_common_headfile.h"
 #include "zf_device_ips200.h"
 #include "zf_device_key.h"
+#include "zf_device_gnss.h"
 #include "IMU_Deal.h"
 #include "Motor.h"
 #include "controller.h"
 #include "chassic.h"
+#include "GPS.h"
+#include "IPS200.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -44,16 +47,18 @@ typedef enum
     STATE_PID_LIST,        // PID 参数列表
     STATE_PID_EDIT,        // 正在编辑某个 PID 参数
     STATE_SPEED,           // 小车速度页
+    STATE_GPS,             // GPS 信息页
     STATE_SUBJECT1,        // 科目1 惯导子菜单
 } menu_state_t;
 
 // 主菜单条目
-#define MAIN_ITEM_COUNT  4
+#define MAIN_ITEM_COUNT  5
 static const char *s_main_items[MAIN_ITEM_COUNT] = {
     "1. IMU  Data",
     "2. PID  Params",
     "3. Speed",
-    "4. Subject1",
+    "4. GPS  Info",
+    "5. Subject1",
 };
 
 // PID 参数条目
@@ -145,7 +150,7 @@ static void draw_main_menu(void)
             ips200_show_string(FONT_W, y, s_main_items[i]);
         }
     }
-    ips200_show_string(0, ROW(6), "[0]Up [1]Dn [2]OK");
+    ips200_show_string(0, ROW(6), "[0]Dn [1]Up [2]OK");
 }
 
 static void draw_imu_page(void)
@@ -197,7 +202,7 @@ static void draw_pid_list(void)
             ips200_show_string(FONT_W, y, buf);
         }
     }
-    ips200_show_string(0, ROW(6), "[0]Up [1]Dn [2]Edit");
+    ips200_show_string(0, ROW(6), "[0]Dn [1]Up [2]Edit");
     ips200_show_string(0, ROW(7), "[3]Back        ");
 }
 
@@ -220,7 +225,7 @@ static void draw_pid_edit(void)
     snprintf(buf, sizeof(buf), "Step : %-10g", s_pid_steps[s_pid_sel]);
     ips200_show_string(0, ROW(4), buf);
 
-    ips200_show_string(0, ROW(6), "[0]-  [1]+          ");
+    ips200_show_string(0, ROW(6), "[0]+  [1]-          ");
     ips200_show_string(0, ROW(7), "[2]Confirm&Apply    ");
     ips200_show_string(0, ROW(8), "[3]Cancel           ");
 }
@@ -243,6 +248,39 @@ static void draw_speed_page(void)
     ips200_show_string(0, ROW(4), buf);
 
     ips200_show_string(0, ROW(8), "[3]Back");
+}
+
+static void draw_gps_page(void)
+{
+    char buf[32];
+    ips200_set_color(COLOR_WHITE, COLOR_BLACK);
+
+    snprintf(buf, sizeof(buf), "Date:%04d-%02d-%02d",
+             gnss.time.year, gnss.time.month, gnss.time.day);
+    ips200_show_string(0, ROW(1), buf);
+
+    snprintf(buf, sizeof(buf), "Time:%02d:%02d:%02d",
+             gnss.time.hour, gnss.time.minute, gnss.time.second);
+    ips200_show_string(0, ROW(2), buf);
+
+    snprintf(buf, sizeof(buf), "Fix:%s Sat:%2d",
+             gnss.state ? "OK" : "--", gnss.satellite_used);
+    ips200_show_string(0, ROW(3), buf);
+
+    snprintf(buf, sizeof(buf), "Lat:%+11.6f", gnss.latitude);
+    ips200_show_string(0, ROW(4), buf);
+
+    snprintf(buf, sizeof(buf), "Lon:%+11.6f", gnss.longitude);
+    ips200_show_string(0, ROW(5), buf);
+
+    snprintf(buf, sizeof(buf), "Spd:%5.2f Dir:%6.2f",
+             gnss.speed, gnss.direction);
+    ips200_show_string(0, ROW(6), buf);
+
+    snprintf(buf, sizeof(buf), "Alt:%7.2f m", gnss.height);
+    ips200_show_string(0, ROW(7), buf);
+
+    ips200_show_string(0, ROW(9), "[3]Back");
 }
 
 // ─── 科目1 惯导子菜单绘制 ─────────────────────────────────────────────────
@@ -315,7 +353,7 @@ static void draw_subject1_page(void)
         ips200_show_string(0, ROW(6), "                    ");
     }
 
-    ips200_show_string(0, ROW(7), "[0]Up [1]Dn [2]OK  ");
+    ips200_show_string(0, ROW(7), "[0]Dn [1]Up [2]OK  ");
     ips200_show_string(0, ROW(8), "[3]Back/Stop       ");
 }
 
@@ -348,7 +386,7 @@ void Menu_Init(void)
     s_startup_done = 0;
     // 启动页：直接画标题，正文由 draw_pid_edit 覆盖写
     draw_title("  PRE-TUNE PID  ");
-    ips200_show_string(0, ROW(1), "[0]-  [1]+  [2]Next ");
+    ips200_show_string(0, ROW(1), "[0]+  [1]-  [2]Next ");
 #else
     s_state        = STATE_MAIN_MENU;
     s_startup_done = 1;
@@ -396,14 +434,14 @@ void Menu_Process(void)
             float *pval = get_global_pid_var(s_pid_sel);
             float  step = s_pid_steps[s_pid_sel];
 
-            if (key_pressed(KEY_1) && pval)       // 减小
-            {
-                *pval -= step;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_2) && pval)  // 增大
+            if (key_pressed(KEY_1) && pval)       // 增大 (原下)
             {
                 *pval += step;
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_2) && pval)  // 减小 (原上)
+            {
+                *pval -= step;
                 s_need_redraw = 1;
             }
             else if (key_pressed(KEY_3))          // 确认当前参数，前进到下一个
@@ -437,14 +475,14 @@ void Menu_Process(void)
         {
             if (s_need_redraw) { draw_main_menu(); s_need_redraw = 0; }
 
-            if (key_pressed(KEY_1))      // 上
-            {
-                s_main_sel = (s_main_sel + MAIN_ITEM_COUNT - 1) % MAIN_ITEM_COUNT;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_2)) // 下
+            if (key_pressed(KEY_1))      // 下 (原上)
             {
                 s_main_sel = (s_main_sel + 1) % MAIN_ITEM_COUNT;
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_2)) // 上 (原下)
+            {
+                s_main_sel = (s_main_sel + MAIN_ITEM_COUNT - 1) % MAIN_ITEM_COUNT;
                 s_need_redraw = 1;
             }
             else if (key_pressed(KEY_3)) // 确认
@@ -470,6 +508,12 @@ void Menu_Process(void)
                     draw_title("  Speed         ");
                 }
                 else if (s_main_sel == 3)
+                {
+                    s_state = STATE_GPS;
+                    ips200_clear();
+                    draw_title("  GPS Info      ");
+                }
+                else if (s_main_sel == 4)
                 {
                     s_state = STATE_SUBJECT1;
                     s_subj1_sel = 0;
@@ -502,12 +546,12 @@ void Menu_Process(void)
 
             if (key_pressed(KEY_1))
             {
-                s_pid_sel = (s_pid_sel + PID_ITEM_COUNT - 1) % PID_ITEM_COUNT;
+                s_pid_sel = (s_pid_sel + 1) % PID_ITEM_COUNT;
                 s_need_redraw = 1;
             }
             else if (key_pressed(KEY_2))
             {
-                s_pid_sel = (s_pid_sel + 1) % PID_ITEM_COUNT;
+                s_pid_sel = (s_pid_sel + PID_ITEM_COUNT - 1) % PID_ITEM_COUNT;
                 s_need_redraw = 1;
             }
             else if (key_pressed(KEY_3))  // 进入编辑
@@ -535,14 +579,14 @@ void Menu_Process(void)
             float *pval = get_global_pid_var(s_pid_sel);
             float  step = s_pid_steps[s_pid_sel];
 
-            if (key_pressed(KEY_1) && pval)       // 减小
-            {
-                *pval -= step;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_2) && pval)  // 增大
+            if (key_pressed(KEY_1) && pval)       // 增大 (原下)
             {
                 *pval += step;
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_2) && pval)  // 减小 (原上)
+            {
+                *pval -= step;
                 s_need_redraw = 1;
             }
             else if (key_pressed(KEY_3))           // 确认写入单片机
@@ -580,20 +624,34 @@ void Menu_Process(void)
         }
 
         // ──────────────────────────────────────────────
+        case STATE_GPS:
+        {
+            GPS_Update();
+            if (s_need_redraw || do_refresh) { draw_gps_page(); s_need_redraw = 0; }
+
+            if (key_pressed(KEY_4))
+            {
+                s_state = STATE_MAIN_MENU;
+                s_need_redraw = 1;
+            }
+            break;
+        }
+
+        // ──────────────────────────────────────────────
         case STATE_SUBJECT1:
         {
             if (s_need_redraw || do_refresh) { draw_subject1_page(); s_need_redraw = 0; }
 
             chassic_state_t cst = Chassic_GetState();
 
-            if (key_pressed(KEY_1))      // 上
-            {
-                s_subj1_sel = (s_subj1_sel + SUBJ1_ITEM_COUNT - 1) % SUBJ1_ITEM_COUNT;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_2)) // 下
+            if (key_pressed(KEY_1))      // 下 (原上)
             {
                 s_subj1_sel = (s_subj1_sel + 1) % SUBJ1_ITEM_COUNT;
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_2)) // 上 (原下)
+            {
+                s_subj1_sel = (s_subj1_sel + SUBJ1_ITEM_COUNT - 1) % SUBJ1_ITEM_COUNT;
                 s_need_redraw = 1;
             }
             else if (key_pressed(KEY_3)) // 确认

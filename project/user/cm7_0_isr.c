@@ -72,7 +72,7 @@ void pit0_ch0_isr(void)
 #endif
 
 #ifdef USE_PID_CONTROL
-   Motor_PID_Balance_Control(pitch_deg, imu_sys.gx, imu_sys.gz);
+//    Motor_PID_Balance_Control(pitch_deg, imu_sys.gx, imu_sys.gz);
 #endif
 
     // 5. 科目1 惯导任务 (每 2ms 调用一次)

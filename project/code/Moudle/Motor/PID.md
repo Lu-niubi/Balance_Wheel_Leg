@@ -1,3 +1,26 @@
+真实可靠1较软pid
+float GYRO_KP = 240.0f;
+float ANG_KP  = 2.32f;
+float ANG_KI  = 0.008f;
+float ANG_KD  = 0.04f;
+float GYRO_KI = 0.0f;
+float GYRO_KD = 0.0f;
+
+// 3. 最外环：速度环 (输入: 速度, 输出: 目标角度)
+#define SPD_KP    0.1f   //非常小
+#define SPD_KI    0.0f  // 积分也要很小
+#define SPD_KD    0.0f     // 速度环通常不需要 D
+#define SPD_MAX_PITCH  20.0f // 速度环最大允许输出多少度倾角安全限制
+
+// 4. 转向环参数 (输入: 摇杆差值, 输出: PWM差分)
+#define TURN_KP 20.0f
+#define TURN_KI 0.0f
+#define TURN_KD 3.1f
+
+
+
+
+
 1.15
 * 中高度下的pid
 * * 参数1
@@ -104,3 +127,5 @@
 #define SPD_KP    0.1000f
 #define SPD_KI    0.0010f
 // ===============================================
+
+
