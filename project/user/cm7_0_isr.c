@@ -52,7 +52,6 @@ void pit0_ch0_isr(void)
 {
    static int count = 0;
    static uint8_t flag = 0;
-   static uint8_t chassic_div = 0;   // 2ms 分频计数
    pit_isr_flag_clear(PIT_CH0);
 
     // 1. 获取imu数据
@@ -72,15 +71,11 @@ void pit0_ch0_isr(void)
 #endif
 
 #ifdef USE_PID_CONTROL
-//    Motor_PID_Balance_Control(pitch_deg, imu_sys.gx, imu_sys.gz);
+   Motor_PID_Balance_Control(pitch_deg, imu_sys.gx, imu_sys.gz);
 #endif
 
-    // 5. 科目1 惯导任务 (每 2ms 调用一次)
-    if (++chassic_div >= 2)
-    {
-        chassic_div = 0;
-        Chassic_Tick_2ms();
-    }
+    // 5. 科目1 惯导任务 (每 1ms 调用一次)
+    Chassic_Tick_1ms();
 }
 void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
 {

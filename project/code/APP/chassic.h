@@ -2,16 +2,8 @@
  * @file   chassic.h
  * @brief  科目1 — 惯性导航取点与回放应用层
  *
- * 状态机:
+ * 科目1 状态机:
  *   IDLE → RECORDING → READY → STABILIZING → REPLAYING → DONE
- *
- * 外部调用:
- *   - Chassic_Init()          : 上电初始化
- *   - Chassic_StartRecord()   : 开始取点 (从菜单触发)
- *   - Chassic_StopRecord()    : 停止取点 (从菜单触发)
- *   - Chassic_StartReplay()   : 开始回放 (从菜单触发)
- *   - Chassic_Tick_2ms()      : 2ms 定时调用 (放在 PIT 中断)
- *   - Chassic_GetState()      : 获取当前状态 (菜单显示用)
  */
 
 #ifndef _CHASSIC_H_
@@ -25,6 +17,7 @@
 
 #define CHASSIC_REPLAY_SPEED    200.0f   // 回放时的固定目标速度 (RPM)
 #define CHASSIC_STABILIZE_MS    2000     // 回放前PID平稳等待时间 (ms)
+#define CHASSIC_COAST_CM        10.0f   // 回放完成后继续直行的距离 (cm = 10)
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  状态枚举
@@ -37,7 +30,8 @@ typedef enum
     CHASSIC_READY,          // 取点完成, 等待启动回放
     CHASSIC_STABILIZING,    // PID 平稳阶段 (速度=0, 等待平衡)
     CHASSIC_REPLAYING,      // 回放航迹中
-    CHASSIC_DONE,           // 回放完成
+    CHASSIC_COASTING,       // 回放完成后继续直行 CHASSIC_COAST_CM
+    CHASSIC_DONE,           // 完全停止
 } chassic_state_t;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -60,10 +54,10 @@ void Chassic_StartReplay(void);
 void Chassic_Stop(void);
 
 /**
- * @brief  2ms 定时调用 (必须放在 PIT 中断中)
+ * @brief  1ms 定时调用 (必须放在 PIT 中断中)
  * @note   内部根据状态自动执行 Recording / Replay 逻辑
  */
-void Chassic_Tick_2ms(void);
+void Chassic_Tick_1ms(void);
 
 /** 获取当前状态 */
 chassic_state_t Chassic_GetState(void);

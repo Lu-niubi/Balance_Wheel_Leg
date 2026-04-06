@@ -2,14 +2,13 @@
  * @file   chassic.c
  * @brief  科目1 — 惯性导航取点与回放应用层实现
  *
- * 状态机流程:
- *   IDLE ──StartRecord()──> RECORDING ──StopRecord()──> READY
- *   READY ──StartReplay()──> STABILIZING ──(2s后)──> REPLAYING ──(到终点)──> DONE
+ * 科目1状态机:
+ *   IDLE → RECORDING → READY → STABILIZING → REPLAYING → DONE
  *
  * Recording 阶段:
  *   - 关闭外部速度/航向控制 (ext_control = 0)
  *   - 电机速度目标 = 0，用手推着走
- *   - 每 2ms 调用 INS_RecordTick() 记录 {距离, yaw}
+ *   - 每 1ms 调用 INS_RecordTick() 记录航迹
  *
  * Replay 阶段:
  *   - 先 STABILIZING: ext_control=1, speed=0, yaw=初始yaw，等 PID 平衡
@@ -24,15 +23,16 @@
 #include <stdio.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  内部状态
+//  科目1 内部状态
 // ─────────────────────────────────────────────────────────────────────────────
 
 static chassic_state_t s_state = CHASSIC_IDLE;
-static uint32_t s_stabilize_cnt = 0;   // STABILIZING 阶段计时 (2ms 计数)
+static uint32_t s_stabilize_cnt = 0;   // STABILIZING 阶段计时 (1ms 计数)
 static float s_yaw_replay_offset = 0.0f; // INS坐标系→Motor坐标系的yaw偏移
+static float s_coast_accum_cm   = 0.0f; // COASTING 阶段累积距离 (cm)
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  接口实现
+//  科目1 接口实现
 // ─────────────────────────────────────────────────────────────────────────────
 
 void Chassic_Init(void)
@@ -60,7 +60,7 @@ void Chassic_StartRecord(void)
     Motor_Reset_State();
 
     s_state = CHASSIC_RECORDING;
-    printf("[Chassic] Recording started.\r\n");
+    // printf("[Chassic] Recording started.\r\n");
 }
 
 void Chassic_StopRecord(void)
@@ -69,8 +69,8 @@ void Chassic_StopRecord(void)
         return;
 
     s_state = CHASSIC_READY;
-    printf("[Chassic] Recording stopped. Points:%d, Dist:%.1f cm\r\n",
-           INS_GetPointCount(), INS_GetTotalDistance());
+    // printf("[Chassic] Recording stopped. Points:%d, Dist:%.1f cm\r\n",
+        //    INS_GetPointCount(), INS_GetTotalDistance());
 }
 
 void Chassic_StartReplay(void)
@@ -80,7 +80,7 @@ void Chassic_StartReplay(void)
 
     if (INS_GetPointCount() == 0)
     {
-        printf("[Chassic] No recorded points!\r\n");
+        // printf("[Chassic] No recorded points!\r\n");
         return;
     }
 
@@ -91,7 +91,6 @@ void Chassic_StartReplay(void)
     Motor_Reset_State();
 
     // 计算坐标系偏移：将INS记录的连续yaw对齐到Motor的连续yaw
-    // Motor坐标系从开机时开始累积，INS坐标系从recording开始时的raw yaw开始
     s_yaw_replay_offset = Motor_Get_Yaw_Continuous() - g_ins.points[0].yaw_deg;
 
     // 进入稳定阶段：启用外部控制，速度=0，yaw=起始yaw (Motor坐标系)
@@ -100,9 +99,10 @@ void Chassic_StartReplay(void)
     Motor_Set_Ext_Yaw(g_ins.points[0].yaw_deg + s_yaw_replay_offset);
 
     s_stabilize_cnt = 0;
+    s_coast_accum_cm = 0.0f;
     s_state = CHASSIC_STABILIZING;
-    printf("[Chassic] Stabilizing... (%.1fs)\r\n",
-           CHASSIC_STABILIZE_MS / 1000.0f);
+    // printf("[Chassic] Stabilizing... (%.1fs)\r\n",
+    //        CHASSIC_STABILIZE_MS / 1000.0f);
 }
 
 void Chassic_Stop(void)
@@ -111,10 +111,10 @@ void Chassic_Stop(void)
     Motor_Set_Ext_Speed(0.0f);
     Motor_Reset_State();
     s_state = CHASSIC_IDLE;
-    printf("[Chassic] Stopped.\r\n");
+    // printf("[Chassic] Stopped.\r\n");
 }
 
-void Chassic_Tick_2ms(void)
+void Chassic_Tick_1ms(void)
 {
     int16_t lrpm = Motor_Get_Left_Speed();
     int16_t rrpm = Motor_Get_Right_Speed();
@@ -124,16 +124,13 @@ void Chassic_Tick_2ms(void)
         case CHASSIC_IDLE:
         case CHASSIC_READY:
         case CHASSIC_DONE:
-            // 什么都不做
             break;
 
         case CHASSIC_RECORDING:
         {
-            // 每 2ms 记录一个点
             uint8_t full = INS_RecordTick(lrpm, rrpm, imu_sys.yaw);
             if (full)
             {
-                // 缓冲区满，自动停止
                 Chassic_StopRecord();
             }
             break;
@@ -142,34 +139,48 @@ void Chassic_Tick_2ms(void)
         case CHASSIC_STABILIZING:
         {
             s_stabilize_cnt++;
-            // 等待 CHASSIC_STABILIZE_MS 毫秒
-            // 计数单位是 2ms，所以 cnt 阈值 = ms / 2
-            if (s_stabilize_cnt >= (CHASSIC_STABILIZE_MS / 2))
+            if (s_stabilize_cnt >= CHASSIC_STABILIZE_MS)
             {
-                // 平稳期结束，开始回放
                 Motor_Set_Ext_Speed(CHASSIC_REPLAY_SPEED);
                 s_state = CHASSIC_REPLAYING;
-                printf("[Chassic] Replaying! Speed=%d RPM\r\n",
-                       (int)CHASSIC_REPLAY_SPEED);
+                // printf("[Chassic] Replaying! Speed=%d RPM\r\n",
+                    //    (int)CHASSIC_REPLAY_SPEED);
             }
             break;
         }
 
         case CHASSIC_REPLAYING:
         {
-            // 每 2ms 推进回放，获取目标 yaw (INS坐标系，连续值)
             float target_yaw_ins = INS_ReplayTick(lrpm, rrpm);
-            // 转换到Motor坐标系后送给转向PID
             Motor_Set_Ext_Yaw(target_yaw_ins + s_yaw_replay_offset);
 
-            // 检查回放是否完成
             if (INS_IsReplayDone())
             {
-                // 到达终点，停车
+                // 不立刻停车，进入滑行阶段：保持当前速度和yaw再走 CHASSIC_COAST_CM
+                s_coast_accum_cm = 0.0f;
+                s_state = CHASSIC_COASTING;
+                // printf("[Chassic] Coasting %.0fcm...\r\n", CHASSIC_COAST_CM);
+            }
+            break;
+        }
+
+        case CHASSIC_COASTING:
+        {
+            // 用编码器速度累积滑行距离（与INS录制公式相同）
+            float avg_rpm = ((float)lrpm + (float)rrpm) * 0.5f;
+            if (avg_rpm < 0.0f) avg_rpm = -avg_rpm;
+            float delta_cm = (avg_rpm / 60.0f) * (2.0f * 3.1415926f * INS_WHEEL_RADIUS)
+                             * INS_SAMPLE_DT * 100.0f;
+            s_coast_accum_cm += delta_cm;
+
+            if (s_coast_accum_cm >= CHASSIC_COAST_CM)
+            {
+                // 到了10cm，立刻将速度目标设为0
                 Motor_Set_Ext_Speed(0.0f);
                 s_state = CHASSIC_DONE;
-                printf("[Chassic] Replay done!\r\n");
+                // printf("[Chassic] Done! Coast=%.1fcm\r\n", s_coast_accum_cm);
             }
+            // yaw 和 speed 维持回放结束时的值，不再更新
             break;
         }
     }

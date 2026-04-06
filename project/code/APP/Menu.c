@@ -8,12 +8,14 @@
 #include "zf_device_ips200.h"
 #include "zf_device_key.h"
 #include "zf_device_gnss.h"
+#include <stdint.h>
 #include "IMU_Deal.h"
 #include "Motor.h"
 #include "controller.h"
 #include "chassic.h"
 #include "GPS.h"
 #include "IPS200.h"
+#include "ins_navigation.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -150,7 +152,7 @@ static void draw_main_menu(void)
             ips200_show_string(FONT_W, y, s_main_items[i]);
         }
     }
-    ips200_show_string(0, ROW(6), "[0]Dn [1]Up [2]OK");
+    ips200_show_string(0, ROW(7), "[0]Dn [1]Up [2]OK");
 }
 
 static void draw_imu_page(void)
@@ -299,6 +301,7 @@ static const char *chassic_state_str(chassic_state_t st)
         case CHASSIC_READY:       return "READY  ";
         case CHASSIC_STABILIZING: return "STAB.. ";
         case CHASSIC_REPLAYING:   return "PLAY.. ";
+        case CHASSIC_COASTING:    return "COAST. ";
         case CHASSIC_DONE:        return "DONE   ";
         default:                  return "???    ";
     }
@@ -343,7 +346,7 @@ static void draw_subject1_page(void)
         snprintf(buf, sizeof(buf), "Yaw:%+7.2f deg    ", imu_sys.yaw);
         ips200_show_string(0, ROW(6), buf);
     }
-    else if (cst == CHASSIC_REPLAYING || cst == CHASSIC_DONE)
+    else if (cst == CHASSIC_REPLAYING || cst == CHASSIC_COASTING || cst == CHASSIC_DONE)
     {
         snprintf(buf, sizeof(buf), "Progress: %3d%%    ", Chassic_GetReplayProgress());
         ips200_show_string(0, ROW(6), buf);
@@ -355,6 +358,108 @@ static void draw_subject1_page(void)
 
     ips200_show_string(0, ROW(7), "[0]Dn [1]Up [2]OK  ");
     ips200_show_string(0, ROW(8), "[3]Back/Stop       ");
+}
+
+// ─── 路径绘制 ──────────────────────────────────────────────────────────────
+
+/**
+ * @brief  将 int16_t 坐标钳制到屏幕范围并转为 uint16_t，供 ips200_draw_line 安全使用
+ */
+static uint16_t clamp_px(int16_t v, int16_t max_v)
+{
+    if (v < 0)     return 0;
+    if (v >= max_v) return (uint16_t)(max_v - 1);
+    return (uint16_t)v;
+}
+
+/**
+ * @brief  用INS路径绘制器将走过的路径画到屏幕上
+ *         北向向上，东向向右，自适应缩放
+ */
+static void draw_ins_path(void)
+{
+    if (INS_GetPointCount() == 0)
+        return;
+
+    int16_t scr_w = (int16_t)ips200_width_max;
+    int16_t scr_h = (int16_t)ips200_height_max;
+
+    // ── 第一遍：计算路径 x/y 的包围盒 ──
+    float x_min = 0.0f, x_max = 0.0f;
+    float y_min = 0.0f, y_max = 0.0f;
+    float x, y;
+
+    INS_PathDrawInit();
+    while (INS_PathDrawNext(&x, &y))
+    {
+        if (x < x_min) x_min = x;
+        if (x > x_max) x_max = x;
+        if (y < y_min) y_min = y;
+        if (y > y_max) y_max = y;
+    }
+
+    // 路径范围（cm），至少10cm避免除零和过度放大
+    float range_x = (x_max - x_min);
+    float range_y = (y_max - y_min);
+    if (range_x < 10.0f) range_x = 10.0f;
+    if (range_y < 10.0f) range_y = 10.0f;
+
+    // 可用绘图区：上方留标题2行(32px)，其余各留6px边距
+    int16_t left   = 6;
+    int16_t top    = 38;
+    int16_t right  = scr_w - 6;
+    int16_t bottom = scr_h - 6;
+    int16_t draw_w = right - left;
+    int16_t draw_h = bottom - top;
+
+    // 等比缩放，取较小值
+    float scale_x = (float)draw_w / range_x;
+    float scale_y = (float)draw_h / range_y;
+    float scale   = (scale_x < scale_y) ? scale_x : scale_y;
+
+    // 起点 (0,0) 对应的锚点像素坐标（int32_t 中间量避免溢出）
+    // x轴：将 x_min 对齐到 left
+    // y轴：将 y_max 对齐到 top（屏幕 y 向下，路径 y 向上）
+    int16_t anchor_x = left  + (int16_t)((-x_min) * scale + 0.5f);
+    int16_t anchor_y = top   + (int16_t)(( y_max) * scale + 0.5f);
+
+    // 钳制锚点到屏幕内（保证红色起点十字不越界）
+    if (anchor_x < left)   anchor_x = left;
+    if (anchor_x >= right)  anchor_x = right - 1;
+    if (anchor_y < top)    anchor_y = top;
+    if (anchor_y >= bottom) anchor_y = bottom - 1;
+
+    // ── 第二遍：画路径折线 ──
+    uint16_t px0 = (uint16_t)anchor_x;
+    uint16_t py0 = (uint16_t)anchor_y;
+    uint16_t draw_idx = 0;
+
+    INS_PathDrawInit();
+    while (INS_PathDrawNext(&x, &y))
+    {
+        int16_t px_i = anchor_x + (int16_t)(x * scale + 0.5f);
+        int16_t py_i = anchor_y - (int16_t)(y * scale + 0.5f);
+
+        uint16_t px = clamp_px(px_i, scr_w);
+        uint16_t py = clamp_px(py_i, scr_h);
+
+        if (draw_idx > 0)
+            ips200_draw_line(px0, py0, px, py, COLOR_GREEN);
+
+        px0 = px;
+        py0 = py;
+        draw_idx++;
+    }
+
+    // ── 红色十字标记起点 ──
+    if (anchor_x >= 4 && anchor_x < scr_w - 4 &&
+        anchor_y >= 4 && anchor_y < scr_h - 4)
+    {
+        ips200_draw_line((uint16_t)(anchor_x - 4), (uint16_t)anchor_y,
+                         (uint16_t)(anchor_x + 4), (uint16_t)anchor_y, COLOR_RED);
+        ips200_draw_line((uint16_t)anchor_x, (uint16_t)(anchor_y - 4),
+                         (uint16_t)anchor_x, (uint16_t)(anchor_y + 4), COLOR_RED);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -679,7 +784,7 @@ void Menu_Process(void)
             else if (key_pressed(KEY_4)) // 返回 / 停止
             {
                 if (cst == CHASSIC_RECORDING || cst == CHASSIC_STABILIZING ||
-                    cst == CHASSIC_REPLAYING)
+                    cst == CHASSIC_REPLAYING  || cst == CHASSIC_COASTING)
                 {
                     Chassic_Stop();
                 }
@@ -688,5 +793,6 @@ void Menu_Process(void)
             }
             break;
         }
+
     }
 }
