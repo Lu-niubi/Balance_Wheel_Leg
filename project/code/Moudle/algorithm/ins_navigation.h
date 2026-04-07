@@ -26,7 +26,7 @@
 //  参数宏
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define INS_MAX_POINTS          10000     // 最大记录点数 (10000 * 2cm = 200m)
+#define INS_MAX_POINTS          5000     // 最大记录点数 
 #define INS_SAMPLE_DT           0.001f   // 采样周期 (秒) = 1ms
 #define INS_WHEEL_RADIUS        0.034f   // 轮半径 (米)
 #define INS_RECORD_SPACING_CM   2.0f     // 每 2cm 保存一个点

@@ -1437,6 +1437,12 @@
                 <name>$PROJ_DIR$\..\..\code\APP\chassic.h</name>
             </file>
             <file>
+                <name>$PROJ_DIR$\..\..\code\APP\minesweep.c</name>
+            </file>
+            <file>
+                <name>$PROJ_DIR$\..\..\code\APP\minesweep.h</name>
+            </file>
+            <file>
                 <name>$PROJ_DIR$\..\..\code\APP\Menu.c</name>
             </file>
             <file>

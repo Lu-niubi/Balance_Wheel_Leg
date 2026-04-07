@@ -44,6 +44,7 @@
 #include "TuneCmd.h"
 #include "Menu.h"
 #include "chassic.h"
+#include "minesweep.h"
 #include "zf_device_key.h"
 
 
@@ -104,11 +105,13 @@ int main(void)
     key_init(5);         // 5ms 扫描周期，配合 PIT_CH2 调用
     Menu_Init();
     Chassic_Init();      // 科目1 惯导模块初始化
+    Minesweep_Init();    // 科目2 定点排雷模块初始化
     printf("\r\nMenu OK.");
 
     // -------------------------------------------------------------------------
     // 5. 开启非控制类中断 (舵机、按键扫描)
     // -------------------------------------------------------------------------
+
     pit_ms_init(PIT_CH1,5);
     pit_ms_init(PIT_CH2,10);  // 5ms 按键扫描
 
@@ -127,7 +130,10 @@ int main(void)
     // -------------------------------------------------------------------------
     Motor_Reset_State();
     FiveBar_IK_Degree_Interface(Leg,90,&angle1,&angle4);
-    //
+//     //
+//   Motor_Set_Ext_Control(1);
+//   Motor_Set_Ext_Speed(0.0f);
+//   Motor_Set_Single_Bridge_Mode(1);
     pit_ms_init(PIT_CH0,1);
 
     while(true)
@@ -139,7 +145,11 @@ int main(void)
 
         // TuneCmd_Process();
         Menu_Process();
-
+//   static uint32_t sb_tick = 0;
+//   if (++sb_tick >= 50000) {
+//       sb_tick = 0;
+//       printf("roll=%.2f pitch=%.2f\r\n", imu_sys.roll, imu_sys.pitch);
+//   }
         // GPS 数据轮询：有新帧则解析并刷新屏幕
         // // if(GPS_Update())
         // // {

@@ -94,6 +94,14 @@ static float ext_speed_target  = 0.0f;   // 外部设定的目标速度 (RPM)，
 static float ext_yaw_target    = 0.0f;   // 外部设定的目标航向 (连续累积度)
 static uint8_t ext_control_enabled = 0;  // 1 = 使用外部目标, 0 = 使用原有逻辑(手柄)
 
+// ─── 旋转模式 (绕过yaw PID，直接差速) ───
+static int16_t s_spin_pwm = 0;           // 非0=旋转模式，正值顺时针
+
+// ─── 单边桥模式 ───
+uint8_t g_single_bridge_mode = 0;        // 0=正常, 1=单边桥
+static PIDInstance pid_roll;             // Roll 补偿 PID
+static float s_roll_leg_delta = 0.0f;   // Roll PID 输出的腿长差值 (mm)
+
 // ─── 连续yaw (无±180跳变) ───
 static float s_yaw_continuous = 0.0f;
 static float s_yaw_last       = 0.0f;
@@ -267,7 +275,13 @@ void Motor_Reset_State(void)
     actual_speed_filter = 0.0f;
     lqr_target_pitch_offset = 0.0f;
     lqr_turn_out = 0.0f;
-    
+
+    // --- 4. 单边桥模式重置 ---
+    pid_roll.ITerm = 0; pid_roll.Iout = 0; pid_roll.Output = 0;
+    pid_roll.Last_Err = 0; pid_roll.Last_Output = 0;
+    s_roll_leg_delta = 0.0f;
+    g_single_bridge_mode = 0;
+
     // 强制关闭电机
     Motor_Set_Duty(0, 0);
 
@@ -305,6 +319,32 @@ float Motor_Get_Yaw_Continuous(void)
 float Motor_Get_Ext_Yaw(void)
 {
     return ext_yaw_target;
+}
+
+void Motor_Set_Spin(int16_t spin_pwm)
+{
+    s_spin_pwm = spin_pwm;
+}
+
+// ─── 单边桥模式接口 ───
+void Motor_Set_Single_Bridge_Mode(uint8_t enable)
+{
+    g_single_bridge_mode = enable;
+    if (!enable)
+    {
+        pid_roll.ITerm = 0; pid_roll.Iout = 0; pid_roll.Output = 0;
+        pid_roll.Last_Err = 0; pid_roll.Last_Output = 0;
+        s_roll_leg_delta = 0.0f;
+    }
+}
+
+void Motor_Roll_Loop(float imu_roll)
+{
+    if (!g_single_bridge_mode) return;
+    float roll_pid_out = PIDCalculate(&pid_roll, imu_roll, ROLL_MECH_ZERO);
+    if (roll_pid_out >  ROLL_MAX_LEG_DELTA) roll_pid_out =  ROLL_MAX_LEG_DELTA;
+    if (roll_pid_out < -ROLL_MAX_LEG_DELTA) roll_pid_out = -ROLL_MAX_LEG_DELTA;
+    s_roll_leg_delta = roll_pid_out;
 }
 
 #ifdef USE_LQR_CONTROL
@@ -553,7 +593,22 @@ void Motor_PID_Init(void)
     config.Derivative_LPF_RC = 0.0f;
     PIDInit(&pid_turn, &config);
 
-    
+    // --- 5. Roll PID (单边桥模式，10ms 调用) ---
+    config.Kp = ROLL_KP_INIT;
+    config.Ki = ROLL_KI_INIT;
+    config.Kd = ROLL_KD_INIT;
+    config.dt = CONTROL_DT * 10; // 10ms
+    config.MaxOut = ROLL_MAX_LEG_DELTA;
+    config.IntegralLimit = 3.0f;
+    config.DeadBand = 0.0f;
+    config.Improve = PID_Integral_Limit | PID_OutputFilter;
+    config.Output_LPF_RC = 0.3f;
+    config.Derivative_LPF_RC = 0.0f;
+    config.CoefA = 0.0f;
+    config.CoefB = 0.0f;
+    PIDInit(&pid_roll, &config);
+
+
 }
 // -------------------------------------------------------------------------
 // PID 平衡控制核心 (需在 pit0_ch0_isr 中调用)
@@ -609,25 +664,54 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
         // --- Step 1.2: 速度环 PID 计算 ---
         // 这里的 PID 输出将作为”腿部角度的偏移量”
         float spd_ref = ext_control_enabled ? ext_speed_target : 0.0f;
-        float speed_pid_out = PIDCalculate(&pid_velo, actual_speed_filter, spd_ref);
-        outtest = speed_pid_out;
-        // --- Step 1.3: 腿部逆解控制 (重心偏移) ---
-        // 逻辑：想前进(PID>0) -> 腿后摆(Pi0<90) -> 摆杆前倾
-        // 基础角度 90度 - PID输出
-        float target_leg_angle = 90.0f-speed_pid_out;
 
-        // 物理限幅 (防止机构卡死)
-        if(target_leg_angle > 150.0f) target_leg_angle = 150.0f;
-        if(target_leg_angle < 30.0f)  target_leg_angle = 30.0f;
+        if (g_single_bridge_mode)
+        {
+            // 单边桥模式：限速 100 RPM
+            if (spd_ref >  SB_SPEED_LIMIT) spd_ref =  SB_SPEED_LIMIT;
+            if (spd_ref < -SB_SPEED_LIMIT) spd_ref = -SB_SPEED_LIMIT;
 
-        // 执行逆解 (假设腿长固定 41.23)
-        float dummy_deg1, dummy_deg4;
-        float wish_leg = target_leg_angle;
-        Left_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
-        Right_FiveBar_IK_Degree_Interface(41.23f, wish_leg, &dummy_deg1, &dummy_deg4);
-        
-        // 注意：在轮腿解耦模式下，目标 Pitch 角度始终锁死为 0 (或者机械中值偏移)
-        target_pitch_angle = 0.0f; 
+            // 速度环输出直接送到角度环目标角度（不改变腿部角度）
+            float speed_pid_out = PIDCalculate(&pid_velo, actual_speed_filter, spd_ref);
+            // outtest = speed_pid_out;
+            target_pitch_angle = speed_pid_out;
+
+            // Roll 补偿环：独立控制左右腿长度，腿角固定 90°
+            Motor_Roll_Loop(imu_sys.roll);
+            float delta = s_roll_leg_delta;
+
+            float L0_left  = SB_BASE_L0 + delta;  // 车身向左 → delta>0 → 左腿抬高
+            float L0_right = SB_BASE_L0 - delta;  // 车身向左 → delta>0 → 右腿伸长
+            if (L0_left  < SB_LEG_MIN) L0_left  = SB_LEG_MIN;
+            if (L0_left  > SB_LEG_MAX) L0_left  = SB_LEG_MAX;
+            if (L0_right < SB_LEG_MIN) L0_right = SB_LEG_MIN;
+            if (L0_right > SB_LEG_MAX) L0_right = SB_LEG_MAX;
+
+            float d1, d4;
+            Left_FiveBar_IK_Degree_Interface(L0_left,  90.0f, &d1, &d4);
+            Right_FiveBar_IK_Degree_Interface(L0_right, 90.0f, &d1, &d4);
+        }
+        else
+        {
+            // 正常模式：速度环驱动腿部角度，改变重心
+            float speed_pid_out = PIDCalculate(&pid_velo, actual_speed_filter, spd_ref);
+            outtest = speed_pid_out;
+            // 逻辑：想前进(PID>0) -> 腿后摆(Pi0<90) -> 摆杆前倾
+            // 基础角度 90度 - PID输出
+            float target_leg_angle = 90.0f - speed_pid_out;
+
+            // 物理限幅 (防止机构卡死)
+            if (target_leg_angle > 150.0f) target_leg_angle = 150.0f;
+            if (target_leg_angle <  30.0f) target_leg_angle =  30.0f;
+
+            // 执行逆解 (假设腿长固定 41.23)
+            float dummy_deg1, dummy_deg4;
+            Left_FiveBar_IK_Degree_Interface(41.23f, target_leg_angle, &dummy_deg1, &dummy_deg4);
+            Right_FiveBar_IK_Degree_Interface(41.23f, target_leg_angle, &dummy_deg1, &dummy_deg4);
+
+            // 注意：在轮腿解耦模式下，目标 Pitch 角度始终锁死为 0
+            target_pitch_angle = 0.0f;
+        }
     }
     // // // ============================================================
     // // 2. 中间环：角度环 (5ms 执行)
@@ -658,7 +742,16 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
     // ============================================================
 
     float turn_out = 0.0f;
-    if (ext_control_enabled)
+    if (s_spin_pwm != 0)
+    {
+        // 旋转模式：跳过yaw PID，直接差速
+        // balance_pwm_out 仍然工作（保持平衡）
+        pid_turn.ITerm    = 0.0f;
+        pid_turn.Iout     = 0.0f;
+        pid_turn.Last_Err = 0.0f;
+        ext_yaw_target    = s_yaw_continuous;
+    }
+    else if (ext_control_enabled)
     {
         // target来自INS回放(连续yaw)，feedback用本地连续yaw，误差自然连续无跳变
         turn_out = PIDCalculate(&pid_turn, s_yaw_continuous, ext_yaw_target);
@@ -672,8 +765,8 @@ void Motor_PID_Balance_Control(float imu_pitch, float imu_gyro_rad, float imu_ya
         ext_yaw_target    = s_yaw_continuous;  // 用连续值跟踪，防止切入时突变
     }
 
-    float motor_l = balance_pwm_out + turn_out;
-    float motor_r = balance_pwm_out - turn_out;
+    float motor_l = balance_pwm_out + turn_out + s_spin_pwm;
+    float motor_r = balance_pwm_out - turn_out - s_spin_pwm;
     // outtest = balance_pwm_out；
     int16_t final_l = -(int16_t)motor_l; // 极性根据你原来的代码保留
     int16_t final_r = (int16_t)motor_r;

@@ -9,7 +9,7 @@ function five_bar_xy_ik()
     % Y轴：向上为正 (如果是站立机器人，通常 Y 为负)
     
     target_x = 0;      % 目标 X 坐标 (mm)
-    target_y = 32;    % 目标 Y 坐标 (mm)
+    target_y = 65;    % 目标 Y 坐标 (mm)
 
     %% === 2. 调用 XY 逆解函数 ===
     [phi1, phi4, is_valid] = calculate_xy_ik(target_x, target_y);

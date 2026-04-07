@@ -13,6 +13,7 @@
 #include "Motor.h"
 #include "controller.h"
 #include "chassic.h"
+#include "minesweep.h"
 #include "GPS.h"
 #include "IPS200.h"
 #include "ins_navigation.h"
@@ -51,16 +52,18 @@ typedef enum
     STATE_SPEED,           // 小车速度页
     STATE_GPS,             // GPS 信息页
     STATE_SUBJECT1,        // 科目1 惯导子菜单
+    STATE_SUBJECT2,        // 科目2 定点排雷子菜单
 } menu_state_t;
 
 // 主菜单条目
-#define MAIN_ITEM_COUNT  5
+#define MAIN_ITEM_COUNT  6
 static const char *s_main_items[MAIN_ITEM_COUNT] = {
     "1. IMU  Data",
     "2. PID  Params",
     "3. Speed",
     "4. GPS  Info",
     "5. Subject1",
+    "6. Subject2",
 };
 
 // PID 参数条目
@@ -83,6 +86,7 @@ static uint8_t      s_startup_done = 1;  // 跳过预调，直接视为已完成
 static int8_t       s_main_sel    = 0;   // 主菜单光标
 static int8_t       s_pid_sel     = 0;   // PID 列表光标
 static int8_t       s_subj1_sel   = 0;   // 科目1子菜单光标 (0=取点, 1=启动)
+static int8_t       s_subj2_sel   = 0;   // 科目2子菜单光标
 static uint8_t      s_need_redraw = 1;   // 强制刷屏标志
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -152,7 +156,7 @@ static void draw_main_menu(void)
             ips200_show_string(FONT_W, y, s_main_items[i]);
         }
     }
-    ips200_show_string(0, ROW(7), "[0]Dn [1]Up [2]OK");
+    ips200_show_string(0, ROW(8), "[0]Dn [1]Up [2]OK");
 }
 
 static void draw_imu_page(void)
@@ -349,6 +353,89 @@ static void draw_subject1_page(void)
     else if (cst == CHASSIC_REPLAYING || cst == CHASSIC_COASTING || cst == CHASSIC_DONE)
     {
         snprintf(buf, sizeof(buf), "Progress: %3d%%    ", Chassic_GetReplayProgress());
+        ips200_show_string(0, ROW(6), buf);
+    }
+    else
+    {
+        ips200_show_string(0, ROW(6), "                    ");
+    }
+
+    ips200_show_string(0, ROW(7), "[0]Dn [1]Up [2]OK  ");
+    ips200_show_string(0, ROW(8), "[3]Back/Stop       ");
+}
+
+// ─── 科目2 定点排雷子菜单绘制 ─────────────────────────────────────────────────
+#define SUBJ2_ITEM_COUNT  3
+static const char *s_subj2_items[SUBJ2_ITEM_COUNT] = {
+    "Record Points",
+    "Mark Point",
+    "Start Replay",
+};
+
+static const char *ms_state_str(ms_state_t st)
+{
+    switch (st)
+    {
+        case MS_IDLE:         return "IDLE   ";
+        case MS_RECORDING:    return "REC... ";
+        case MS_READY:        return "READY  ";
+        case MS_STABILIZING:  return "STAB.. ";
+        case MS_DRIVING:      return "DRIVE. ";
+        case MS_SPINNING:     return "SPIN.. ";
+        case MS_SPIN_ALIGN:   return "ALIGN. ";
+        case MS_COASTING:     return "COAST. ";
+        case MS_DONE:         return "DONE   ";
+        default:              return "???    ";
+    }
+}
+
+static void draw_subject2_page(void)
+{
+    char buf[32];
+
+    // 状态信息
+    ms_state_t mst = Minesweep_GetState();
+    snprintf(buf, sizeof(buf), "State: %s", ms_state_str(mst));
+    ips200_set_color(COLOR_GREEN, COLOR_BLACK);
+    ips200_show_string(0, ROW(1), buf);
+    ips200_set_color(COLOR_WHITE, COLOR_BLACK);
+
+    // 菜单条目
+    for (int8_t i = 0; i < SUBJ2_ITEM_COUNT; i++)
+    {
+        uint16_t y = ROW(i + 2) + 4;
+        if (i == s_subj2_sel)
+        {
+            ips200_set_color(COLOR_BLACK, COLOR_SELECTED);
+            ips200_show_string(0, y, ">");
+            ips200_show_string(FONT_W, y, s_subj2_items[i]);
+            ips200_set_color(COLOR_WHITE, COLOR_BLACK);
+        }
+        else
+        {
+            ips200_show_string(0, y, " ");
+            ips200_show_string(FONT_W, y, s_subj2_items[i]);
+        }
+    }
+
+    // 数据行
+    snprintf(buf, sizeof(buf), "Mk:%2d Dist:%6.1fcm",
+             Minesweep_GetMarkerCount(), Minesweep_GetRecordDistance());
+    ips200_show_string(0, ROW(5), buf);
+
+    if (mst == MS_RECORDING)
+    {
+        snprintf(buf, sizeof(buf), "Yaw:%+7.2f deg    ", imu_sys.yaw);
+        ips200_show_string(0, ROW(6), buf);
+    }
+    else if (mst >= MS_DRIVING && mst <= MS_COASTING)
+    {
+        snprintf(buf, sizeof(buf), "Progress: %3d%%    ", Minesweep_GetReplayProgress());
+        ips200_show_string(0, ROW(6), buf);
+    }
+    else if (mst == MS_DONE)
+    {
+        snprintf(buf, sizeof(buf), "Done! Markers: %2d  ", Minesweep_GetMarkerCount());
         ips200_show_string(0, ROW(6), buf);
     }
     else
@@ -625,6 +712,13 @@ void Menu_Process(void)
                     ips200_clear();
                     draw_title(" Subject1 INS   ");
                 }
+                else if (s_main_sel == 5)
+                {
+                    s_state = STATE_SUBJECT2;
+                    s_subj2_sel = 0;
+                    ips200_clear();
+                    draw_title(" Subject2 Mine  ");
+                }
                 s_need_redraw = 1;
             }
             break;
@@ -787,6 +881,66 @@ void Menu_Process(void)
                     cst == CHASSIC_REPLAYING  || cst == CHASSIC_COASTING)
                 {
                     Chassic_Stop();
+                }
+                s_state = STATE_MAIN_MENU;
+                s_need_redraw = 1;
+            }
+            break;
+        }
+
+        // ──────────────────────────────────────────────
+        case STATE_SUBJECT2:
+        {
+            if (s_need_redraw || do_refresh) { draw_subject2_page(); s_need_redraw = 0; }
+
+            ms_state_t mst = Minesweep_GetState();
+
+            if (key_pressed(KEY_1))      // 下
+            {
+                s_subj2_sel = (s_subj2_sel + 1) % SUBJ2_ITEM_COUNT;
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_2)) // 上
+            {
+                s_subj2_sel = (s_subj2_sel + SUBJ2_ITEM_COUNT - 1) % SUBJ2_ITEM_COUNT;
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_3)) // 确认
+            {
+                if (s_subj2_sel == 0)  // Record Points (toggle)
+                {
+                    if (mst == MS_IDLE || mst == MS_DONE)
+                    {
+                        Minesweep_StartRecord();
+                    }
+                    else if (mst == MS_RECORDING)
+                    {
+                        Minesweep_StopRecord();
+                    }
+                }
+                else if (s_subj2_sel == 1)  // Mark Point
+                {
+                    if (mst == MS_RECORDING)
+                    {
+                        Minesweep_MarkPoint();
+                    }
+                }
+                else if (s_subj2_sel == 2)  // Start Replay
+                {
+                    if (mst == MS_READY)
+                    {
+                        Minesweep_StartReplay();
+                    }
+                }
+                s_need_redraw = 1;
+            }
+            else if (key_pressed(KEY_4)) // 返回 / 停止
+            {
+                if (mst == MS_RECORDING || mst == MS_STABILIZING ||
+                    mst == MS_DRIVING    || mst == MS_SPINNING ||
+                    mst == MS_SPIN_ALIGN || mst == MS_COASTING)
+                {
+                    Minesweep_Stop();
                 }
                 s_state = STATE_MAIN_MENU;
                 s_need_redraw = 1;

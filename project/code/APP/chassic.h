@@ -15,7 +15,7 @@
 //  参数宏
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define CHASSIC_REPLAY_SPEED    200.0f   // 回放时的固定目标速度 (RPM)
+#define CHASSIC_REPLAY_SPEED    300.0f   // 回放时的固定目标速度 (RPM)
 #define CHASSIC_STABILIZE_MS    2000     // 回放前PID平稳等待时间 (ms)
 #define CHASSIC_COAST_CM        10.0f   // 回放完成后继续直行的距离 (cm = 10)
 

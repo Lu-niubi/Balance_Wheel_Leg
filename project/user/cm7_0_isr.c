@@ -39,6 +39,7 @@
 #include "Motor.h"
 #include "Servo.h"
 #include "chassic.h"
+#include "minesweep.h"
 #include "zf_device_key.h"
 #ifndef PI
     #define PI 3.1415926535f
@@ -76,6 +77,9 @@ void pit0_ch0_isr(void)
 
     // 5. 科目1 惯导任务 (每 1ms 调用一次)
     Chassic_Tick_1ms();
+
+    // 6. 科目2 定点排雷 (每 1ms 调用一次)
+    Minesweep_Tick_1ms();
 }
 void pit0_ch1_isr()                     // 定时器通道 1 周期中断服务函数      
 {

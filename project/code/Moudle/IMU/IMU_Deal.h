@@ -7,20 +7,16 @@
 // 核心参数
 //==============================================================================
 #define FUSION_DT           0.001f          // 运行周期 1ms (1000Hz)
-#define GYRO_LSB_2000DPS    16.4f           // 2000dps 灵敏度
+#define GYRO_LSB_2000DPS    16.384f           // 2000dps 灵敏度
 #define ACC_LSB_8G          4096.0f         // 8g 灵敏度
 
-// --- Mahony 算法参数 ---
-#define KP_NORMAL           0.8f            // 正常比例增益0.8
-#define KI_NORMAL           0.002f          // 正常积分增益0.2
-#define KP_INIT             20.0f           // 初始化快速收敛增益
-
-// --- 抗干扰阈值 ---
-#define ACC_MIN_G           0.85f           
-#define ACC_MAX_G           1.15f           
+// --- Madgwick 算法参数 ---
+// beta 越大收敛越快但动态噪声越大，越小静态越稳但收敛慢
+#define BETA_NORMAL         0.1f            // 正常运行 beta：0.1偏大但保证动后能回原点
+#define BETA_INIT           5.0f            // 初始化快速收敛 beta
 
 // --- Smart Yaw (Z轴防漂移) ---
-#define YAW_DEADZONE        0.05f           // rad/s，略微调大死区
+#define YAW_DEADZONE        0.010f          // rad/s，只过滤真正静止噪声
 
 typedef struct
 {
