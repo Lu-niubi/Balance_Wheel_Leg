@@ -148,19 +148,19 @@ int main(void)
 //   static uint32_t sb_tick = 0;
 //   if (++sb_tick >= 50000) {
 //       sb_tick = 0;
-//       printf("roll=%.2f pitch=%.2f\r\n", imu_sys.roll, imu_sys.pitch);
+    //   printf("roll=%.2f pitch=%.2f\r\n", imu_sys.roll, imu_sys.pitch);
 //   }
         // GPS 数据轮询：有新帧则解析并刷新屏幕
         // // if(GPS_Update())
         // // {
         // //   IPS200_ShowGNSS();
         // // }
-        // static uint32_t print_tick = 0;
-        // if (++print_tick >= 50)   // 主循环约1ms/次，50次 = 约50ms，20Hz
-        // {
-        //     print_tick = 0;
-        //     printf("D:%.2f,%.2f,%.4f\n", -8.0f, imu_sys.pitch, imu_sys.gx);
-        // }
+        static uint32_t print_tick = 0;
+        if (++print_tick >= 1000)   // 主循环约1ms/次，50次 = 约50ms，20Hz
+        {
+            print_tick = 0;
+            printf("D:%.2f,%.2f,%.4f\n", -6.32f, imu_sys.pitch, imu_sys.gx);
+        }
         //  system_delay_ms(100);
         // deg= deg+angle_step;
         // if (deg<=40 || deg>=140)

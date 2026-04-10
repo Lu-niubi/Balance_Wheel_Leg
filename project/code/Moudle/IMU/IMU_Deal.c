@@ -112,10 +112,26 @@ void IMU_Fusion_Update(void)
         float inv_s = InvSqrt(s0*s0 + s1*s1 + s2*s2 + s3*s3);
         s0 *= inv_s; s1 *= inv_s; s2 *= inv_s; s3 *= inv_s;
 
-        // 梯度下降修正陀螺仪（yaw 方向 s0/s3 不修正，无磁力计参考）
-        gx -= dyn_beta * s1;
-        gy -= dyn_beta * s2;
-        gz -= dyn_beta * s3;
+        // ---------------------------------------------------------------
+        // 【关键修正】Madgwick 标准做法：梯度直接作用于四元数导数
+        // 不能写成 gx -= beta*s1 再积分！
+        // 因为那样修正量会乘以 q0，当 yaw=±180° 时 q0≈0，修正完全消失
+        // 导致 pitch/roll 在 yaw 过 ±180° 后冻结/漂移
+        // 正确做法：-beta*s 直接叠加到对应的 qdot，不经过旋转矩阵
+        // s3 不修正：无磁力计时不能约束 yaw（世界系 z 轴方向无参考）
+        // ---------------------------------------------------------------
+        imu_sys.q0 += ((-q1*gx - q2*gy - q3*gz) * halfT) - (dyn_beta * s0 * FUSION_DT);
+        imu_sys.q1 += (( q0*gx + q2*gz - q3*gy) * halfT) - (dyn_beta * s1 * FUSION_DT);
+        imu_sys.q2 += (( q0*gy - q1*gz + q3*gx) * halfT) - (dyn_beta * s2 * FUSION_DT);
+        imu_sys.q3 += (( q0*gz + q1*gy - q2*gx) * halfT); // s3 不修正
+    }
+    else
+    {
+        // 无有效加速度计数据，纯陀螺积分
+        imu_sys.q0 += (-q1*gx - q2*gy - q3*gz) * halfT;
+        imu_sys.q1 += ( q0*gx + q2*gz - q3*gy) * halfT;
+        imu_sys.q2 += ( q0*gy - q1*gz + q3*gx) * halfT;
+        imu_sys.q3 += ( q0*gz + q1*gy - q2*gx) * halfT;
     }
 
     // --- 3. Smart Yaw 静态锁死 ---
@@ -125,12 +141,6 @@ void IMU_Fusion_Update(void)
     }
 
     imu_sys.gx = -gx; imu_sys.gy = gy; imu_sys.gz = gz;
-
-    // --- 4. 四元数积分更新 ---
-    imu_sys.q0 += (-q1*gx - q2*gy - q3*gz) * halfT;
-    imu_sys.q1 += ( q0*gx + q2*gz - q3*gy) * halfT;
-    imu_sys.q2 += ( q0*gy - q1*gz + q3*gx) * halfT;
-    imu_sys.q3 += ( q0*gz + q1*gy - q2*gx) * halfT;
 
     // 归一化四元数
     float norm = InvSqrt(imu_sys.q0*imu_sys.q0 + imu_sys.q1*imu_sys.q1 +

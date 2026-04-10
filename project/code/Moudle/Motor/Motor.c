@@ -566,7 +566,7 @@ void Motor_PID_Init(void)
     config.MaxOut = 15.0f;
     config.IntegralLimit = 5.0f;
     config.Improve = PID_OutputFilter|PID_Integral_Limit; // 这里的滤波可以平滑给内环的指令
-    config.Output_LPF_RC = 0.0f; 
+    config.Output_LPF_RC = 0.15f; // 旧数据权重0.15：平滑角度环输出，抑制IMU噪声传递给内环
     PIDInit(&pid_angle, &config);
 
     // --- 3. 最外环：速度环 (Speed Loop) ---
