@@ -6,10 +6,11 @@
  *   Recording —— 每 1ms 由 RPM 计算本次行驶距离，累加到 accum_cm；
  *                当 accum_cm >= 2cm 时保存一个 {yaw_deg} 点，并将余量留给下次。
  *   Replay    —— O(1) 最近邻查找：idx = round(replay_dist / 2.0)，直接索引。
- *   航点检测  —— 比较 replay_distance_cm 与 wp_dist_cm[replay_wp_idx]。
  *   路径绘制  —— 迭代器按均匀 2cm 间距推算(x,y)：
  *                  x += 2cm * sin(yaw_rad)  (东向)
  *                  y += 2cm * cos(yaw_rad)  (北向)
+ *
+ * yaw_deg 存储绝对 IMU 航向角 (±180°)，每次归一化后直接保存，无连续累积。
  *
  * RPM → 距离公式：
  *   v(m/s) = rpm / 60.0 * 2π * R
@@ -27,11 +28,6 @@
 
 INS_State_t g_ins;
 
-// 连续yaw累积 (解决±180跳变)
-static float s_yaw_continuous = 0.0f;  // 连续累积航向角 (度)
-static float s_yaw_last       = 0.0f;  // 上次原始yaw，用于计算差分
-static uint8_t s_yaw_inited   = 0;     // yaw 是否已初始化
-
 // ─────────────────────────────────────────────────────────────────────────────
 //  内部辅助
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,33 +38,17 @@ static uint8_t s_yaw_inited   = 0;     // yaw 是否已初始化
 static float calc_delta_distance_cm(int16_t left_rpm, int16_t right_rpm)
 {
     float avg_rpm = ((float)left_rpm + (float)right_rpm) * 0.5f;
-    if (avg_rpm < 0.0f) avg_rpm = -avg_rpm;
-
+    // 保留符号：前进为正，后退为负
     // v(m/s) = rpm/60 * 2π * R → Δd(cm) = v * dt * 100
     float delta_cm = (avg_rpm / 60.0f) * (2.0f * PI * INS_WHEEL_RADIUS) * INS_SAMPLE_DT * 100.0f;
     return delta_cm;
 }
 
-/**
- * @brief  更新连续yaw（消除±180跳变），返回更新后的连续值
- */
-static float update_yaw_continuous(float yaw_deg)
+// 仅用于回放距离累积（始终为正，不管方向）
+static float calc_delta_abs_cm(int16_t left_rpm, int16_t right_rpm)
 {
-    if (!s_yaw_inited)
-    {
-        s_yaw_last       = yaw_deg;
-        s_yaw_continuous = yaw_deg;
-        s_yaw_inited     = 1;
-    }
-    else
-    {
-        float delta = yaw_deg - s_yaw_last;
-        if (delta >  180.0f) delta -= 360.0f;
-        if (delta < -180.0f) delta += 360.0f;
-        s_yaw_continuous += delta;
-        s_yaw_last = yaw_deg;
-    }
-    return s_yaw_continuous;
+    float delta_cm = calc_delta_distance_cm(left_rpm, right_rpm);
+    return (delta_cm < 0.0f) ? -delta_cm : delta_cm;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,28 +58,22 @@ static float update_yaw_continuous(float yaw_deg)
 void INS_Init(void)
 {
     memset(&g_ins, 0, sizeof(g_ins));
-    s_yaw_continuous = 0.0f;
-    s_yaw_last       = 0.0f;
-    s_yaw_inited     = 0;
 }
 
 uint8_t INS_RecordTick(int16_t left_rpm, int16_t right_rpm, float yaw_deg)
 {
-    // 更新连续yaw（每次都要调用，保持差分连续）
-    float yaw_cont = update_yaw_continuous(yaw_deg);
-
     // 计算本次距离
     float delta_cm = calc_delta_distance_cm(left_rpm, right_rpm);
     g_ins.total_distance_cm += delta_cm;
     g_ins.accum_cm          += delta_cm;
 
-    // 每累积 INS_RECORD_SPACING_CM，保存一个点
+    // 每累积 INS_RECORD_SPACING_CM，保存一个点（存绝对 yaw，±180°）
     while (g_ins.accum_cm >= INS_RECORD_SPACING_CM)
     {
         if (g_ins.point_count >= INS_MAX_POINTS)
             return 1;  // 缓冲区已满
 
-        g_ins.points[g_ins.point_count].yaw_deg = yaw_cont;
+        g_ins.points[g_ins.point_count].yaw_deg = yaw_deg;  // 绝对 ±180°
         g_ins.point_count++;
         g_ins.accum_cm -= INS_RECORD_SPACING_CM;
     }
@@ -118,7 +92,7 @@ float INS_GetTotalDistance(void)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  回放
+//  回放（科目一用，全局路径）
 // ─────────────────────────────────────────────────────────────────────────────
 
 void INS_ReplayInit(void)
@@ -140,8 +114,8 @@ float INS_ReplayTick(int16_t left_rpm, int16_t right_rpm)
     if (g_ins.replay_finished || g_ins.point_count == 0)
         return g_ins.target_yaw_deg;
 
-    // 累积回放距离
-    float delta_cm = calc_delta_distance_cm(left_rpm, right_rpm);
+    // 累积回放距离（取绝对值，回放阶段只前进）
+    float delta_cm = calc_delta_abs_cm(left_rpm, right_rpm);
     g_ins.replay_distance_cm += delta_cm;
 
     // 录制路径的实际终点距离
@@ -172,6 +146,37 @@ float INS_ReplayTick(int16_t left_rpm, int16_t right_rpm)
 uint8_t INS_IsReplayDone(void)
 {
     return g_ins.replay_finished;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  分段回放（科目二用）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @brief  按段查询目标绝对 yaw（±180°）
+ * @param  dist_cm    当前段已行驶距离 (cm，从段起点算起)
+ * @param  start_idx  该段在 g_ins.points[] 中的起始索引
+ * @param  count      该段包含的点数
+ * @retval 目标绝对 yaw (±180°)
+ */
+float INS_GetSegmentYaw(float dist_cm, uint16_t start_idx, uint16_t count)
+{
+    if (count == 0)
+    {
+        // 该段无 INS 点，返回起始点的 yaw（兜底）
+        if (start_idx < g_ins.point_count)
+            return g_ins.points[start_idx].yaw_deg;
+        return 0.0f;
+    }
+
+    float end_dist    = (float)(count - 1) * INS_RECORD_SPACING_CM;
+    float freeze_dist = (end_dist > 30.0f) ? (end_dist - 30.0f) : 0.0f;
+    float query_dist  = (dist_cm > freeze_dist) ? freeze_dist : dist_cm;
+
+    uint16_t offset = (uint16_t)(query_dist / INS_RECORD_SPACING_CM + 0.5f);
+    if (offset >= count) offset = count - 1;
+
+    return g_ins.points[start_idx + offset].yaw_deg;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

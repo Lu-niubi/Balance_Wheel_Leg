@@ -54,10 +54,10 @@ float k_out[4] = {0,0,0,0};
 // float ANG_KD  = 0.06f;
 // float GYRO_KI = 0.0f;
 // float GYRO_KD = 0.0f;
-float GYRO_KP = 240.0f;
-float ANG_KP  = 2.32f;
-float ANG_KI  = 0.008f;
-float ANG_KD  = 0.04f;
+float GYRO_KP = 600.0f;
+float ANG_KP  = 1.152f;
+float ANG_KI  = 0.000f;
+float ANG_KD  = 0.012f;
 float GYRO_KI = 0.0f;
 float GYRO_KD = 0.0f;
 
@@ -67,10 +67,10 @@ float GYRO_KD = 0.0f;
 // #define ANG_KD     0.015f    // 适中的阻尼
 
 // 3. 最外环：速度环 (输入: 速度, 输出: 目标角度)
-#define SPD_KP    0.10f   //非常小
+#define SPD_KP    0.1f   //非常小
 #define SPD_KI    0.01f  // 积分也要很小
-#define SPD_KD    0.0f     // 速度环通常不需要 D
-#define SPD_MAX_PITCH  20.0f // 速度环最大允许输出多少度倾角安全限制
+#define SPD_KD    0.00f     // 速度环通常不需要 D
+#define SPD_MAX_PITCH  30.0f // 速度环最大允许输出多少度倾角安全限制
 
 // 4. 转向环参数 (输入: 摇杆差值, 输出: PWM差分)
 #define TURN_KP 50.0f
@@ -566,7 +566,7 @@ void Motor_PID_Init(void)
     config.MaxOut = 15.0f;
     config.IntegralLimit = 5.0f;
     config.Improve = PID_OutputFilter|PID_Integral_Limit; // 这里的滤波可以平滑给内环的指令
-    config.Output_LPF_RC = 0.15f; // 旧数据权重0.15：平滑角度环输出，抑制IMU噪声传递给内环
+    config.Output_LPF_RC = 0.0f; // 旧数据权重0.15：平滑角度环输出，抑制IMU噪声传递给内环
     PIDInit(&pid_angle, &config);
 
     // --- 3. 最外环：速度环 (Speed Loop) ---
@@ -577,7 +577,7 @@ void Motor_PID_Init(void)
     config.MaxOut = SPD_MAX_PITCH; // 输出限制为最大倾角
     config.IntegralLimit = 2.0f;
     config.Improve = PID_Integral_Limit | PID_OutputFilter;
-    config.Output_LPF_RC = 0.5f;
+    config.Output_LPF_RC = 0.1f;
     PIDInit(&pid_velo, &config);
 
     // --- 4. 转向环 (Turn Loop) ---

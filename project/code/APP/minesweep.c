@@ -1,15 +1,14 @@
 /**
  * @file   minesweep.c
- * @brief  科目2 — 定点排雷 (纯惯导，固定PWM差速旋转)
+ * @brief  科目2 — 定点排雷 (INS录制与科目1相同，自动检测旋转方向)
  *
- * 状态机:
- *   IDLE → RECORDING → READY → STABILIZING → DRIVING → SPINNING → SPIN_ALIGN → ... → COASTING → DONE
- *
- * 核心思想: 每段直线都是独立的"迷你科目1"
- *   - 录制: 按键标记雷区中心点，记录 IMU raw yaw + 累积距离
- *   - 回放: 直线段 yaw PID 跟踪 → 到达雷区点 → 固定PWM差速转720°
- *           → 重新读取IMU yaw映射offset → 下一段直线
- *   - 首尾点不旋转
+ * 核心思想：
+ *   录制 —— 与科目1完全一致，Tick_1ms 每毫秒调用 INS_RecordTick，
+ *            MarkRotation() 仅记录当前总距离作为"旋转触发点"。
+ *   回放 —— 纯 INS_ReplayTick 驱动航向，replay_distance_cm 到达旋转点时
+ *            自动计算旋转方向（前后INS点航向差）和目标yaw，
+ *            用斜坡生成器平滑推进 Motor Ext_Yaw，避免阶跃导致微分爆炸。
+ *   旋转完成 —— 实际 yaw 在目标 ±2° 内即恢复 DRIVING，INS_ReplayTick 继续。
  */
 
 #include "minesweep.h"
@@ -19,50 +18,98 @@
 #include <math.h>
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  内部数据结构
-// ─────────────────────────────────────────────────────────────────────────────
-
-typedef struct {
-    float dist_cm;       // 此标记点在总路径上的累积距离 (cm)
-    float yaw_deg;       // 此标记点处的 IMU raw yaw (±180°)
-} ms_marker_t;
-
-// ─────────────────────────────────────────────────────────────────────────────
 //  内部状态
 // ─────────────────────────────────────────────────────────────────────────────
 
-static ms_state_t   s_state          = MS_IDLE;
-static ms_marker_t  s_markers[MS_MAX_MARKERS];
-static uint8_t      s_marker_count   = 0;
-static uint8_t      s_cur_marker     = 0;       // 当前正在前往的 marker 索引
-static float        s_yaw_offset     = 0.0f;    // INS yaw → Motor yaw 映射偏移
-static float        s_drive_accum_cm = 0.0f;    // 当前直线段累积行驶距离
-static float        s_spin_accum_deg = 0.0f;    // 旋转累积角度
-static float        s_spin_last_yaw  = 0.0f;    // 旋转时上次 raw yaw (用于差分)
-static uint32_t     s_align_cnt      = 0;        // SPIN_ALIGN 稳定计时 (ms)
-static float        s_coast_accum_cm = 0.0f;    // COASTING 累积距离
-static uint32_t     s_stabilize_cnt  = 0;        // STABILIZING 计时 (ms)
+static ms_state_t  s_state           = MS_IDLE;
+static ms_marker_t s_markers[MS_MAX_MARKERS];
+static uint8_t     s_marker_count    = 0;
+static uint8_t     s_cur_marker      = 0;     // 下一个待检测的旋转点索引
+static float       s_coast_accum_cm  = 0.0f;
+static uint32_t    s_stabilize_cnt   = 0;
+
+// SPIN_ALIGN 专用
+static float       s_heading_target  = 0.0f;  // Motor 连续 yaw 的旋转终点
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  辅助函数
+//  内部辅助
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * @brief  计算两个 marker 之间的距离 (cm)
+ * @brief  将绝对目标 yaw (±180°) 归一化后写入 Motor_Set_Ext_Yaw
+ *         每 tick 调用，Motor PID 误差始终在 ±180° 内，无需全局 offset
  */
-static float marker_segment_dist(uint8_t from_idx, uint8_t to_idx)
+static void set_motor_yaw_abs(float target_abs_yaw)
 {
-    return s_markers[to_idx].dist_cm - s_markers[from_idx].dist_cm;
+    float abs_err = target_abs_yaw - imu_sys.yaw;
+    if (abs_err >  180.0f) abs_err -= 360.0f;
+    if (abs_err < -180.0f) abs_err += 360.0f;
+    Motor_Set_Ext_Yaw(Motor_Get_Yaw_Continuous() + abs_err);
 }
 
 /**
- * @brief  由左右轮 RPM 计算本 1ms 周期内行驶的距离 (cm)
+ * @brief  在旋转点处分析 INS 点判断旋转方向，并计算 Motor 连续 yaw 目标
+ *
+ * @param  spin_dist_cm  旋转点的总距离 (cm)
+ * @return               Motor 连续 yaw 目标（直接赋给 s_heading_target）
+ *
+ * 方向判断：取旋转点前 MS_SPIN_LOOK_BEFORE 个点和后 MS_SPIN_LOOK_AHEAD 个点
+ *   δ = normalize(yaw_after - yaw_before, ±180°)
+ *   δ > 0 → 航向增大 → CW → Motor 连续 yaw 正增量
+ *   δ < 0 → 航向减小 → CCW → Motor 连续 yaw 负增量
+ *
+ * 旋转量：按判断方向归一化到 [0°, 360°)，保证只朝一个方向转到目标
  */
-static float calc_delta_cm(int16_t lrpm, int16_t rrpm)
+static float calc_spin_target(float spin_dist_cm)
 {
-    float avg_rpm = ((float)lrpm + (float)rrpm) * 0.5f;
-    if (avg_rpm < 0.0f) avg_rpm = -avg_rpm;
-    return (avg_rpm / 60.0f) * (2.0f * 3.1415926f * INS_WHEEL_RADIUS) * INS_SAMPLE_DT * 100.0f;
+    uint16_t pc = INS_GetPointCount();
+    if (pc < 2)
+        return Motor_Get_Yaw_Continuous();  // 无INS数据，原地不动
+
+    uint16_t idx_at = (uint16_t)(spin_dist_cm / INS_RECORD_SPACING_CM);
+    if (idx_at >= pc) idx_at = pc - 1;
+
+    // 前后各取若干点（加边界保护）
+    uint16_t idx_b = (idx_at >= MS_SPIN_LOOK_BEFORE)
+                     ? (idx_at - MS_SPIN_LOOK_BEFORE) : 0;
+    uint16_t idx_a = idx_at + MS_SPIN_LOOK_AHEAD;
+    if (idx_a >= pc) idx_a = pc - 1;
+
+    float yaw_b = g_ins.points[idx_b].yaw_deg;  // 旋转点前的航向
+    float yaw_a = g_ins.points[idx_a].yaw_deg;  // 旋转点后的目标航向
+
+    // ±180° 归一化得到最短路径方向
+    float delta = yaw_a - yaw_b;
+    if (delta >  180.0f) delta -= 360.0f;
+    if (delta < -180.0f) delta += 360.0f;
+
+    float cur_abs   = imu_sys.yaw;
+    float cur_motor = Motor_Get_Yaw_Continuous();
+
+    // 按录制方向（delta 正负）归一化旋转弧长，强制单向
+    // 先将对齐误差归一化到单圈范围，再叠加规则要求的 720°（两整圈）
+    float err = yaw_a - cur_abs;
+    if (delta >= 0.0f)
+    {
+        // CW方向：对齐量归一化到 [0°, 360°)
+        if (err < 0.0f) err += 360.0f;
+        if (err >= 360.0f) err -= 360.0f;
+
+        // RMUL 规则：雷区内必须旋转至少两整圈（720°）
+        err += 720.0f;
+    }
+    else
+    {
+        // CCW方向：对齐量归一化到 (-360°, 0°]
+        if (err > 0.0f) err -= 360.0f;
+        if (err <= -360.0f) err += 360.0f;
+
+        // RMUL 规则：逆时针同样叠加两整圈（负方向）
+        err -= 720.0f;
+    }
+
+    // err 现在至少 ±720°，无需极小值保护
+    return cur_motor + err;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,7 +121,6 @@ void Minesweep_Init(void)
     s_state        = MS_IDLE;
     s_marker_count = 0;
     s_cur_marker   = 0;
-    s_yaw_offset   = 0.0f;
     Motor_Set_Ext_Control(0);
     Motor_Set_Spin(0);
 }
@@ -97,10 +143,8 @@ void Minesweep_StopRecord(void)
     if (s_state != MS_RECORDING)
         return;
 
-    // 至少需要 2 个标记点 (起点 + 终点)
-    if (s_marker_count < 2)
+    if (INS_GetPointCount() < 2)
     {
-        // 点数不够，回到 IDLE
         s_state = MS_IDLE;
         return;
     }
@@ -108,7 +152,7 @@ void Minesweep_StopRecord(void)
     s_state = MS_READY;
 }
 
-void Minesweep_MarkPoint(void)
+void Minesweep_MarkRotation(void)
 {
     if (s_state != MS_RECORDING)
         return;
@@ -116,7 +160,6 @@ void Minesweep_MarkPoint(void)
         return;
 
     s_markers[s_marker_count].dist_cm = INS_GetTotalDistance();
-    s_markers[s_marker_count].yaw_deg = imu_sys.yaw;  // raw yaw (±180°)
     s_marker_count++;
 }
 
@@ -124,24 +167,21 @@ void Minesweep_StartReplay(void)
 {
     if (s_state != MS_READY)
         return;
-    if (s_marker_count < 2)
+    if (INS_GetPointCount() < 2)
         return;
 
-    INS_ReplayInit();
     Motor_Reset_State();
-
-    // 计算坐标系偏移：将 marker[0] 的 raw yaw 对齐到 Motor 的连续 yaw
-    s_yaw_offset = Motor_Get_Yaw_Continuous() - s_markers[0].yaw_deg;
+    INS_ReplayInit();
 
     s_cur_marker     = 0;
-    s_drive_accum_cm = 0.0f;
-    s_stabilize_cnt  = 0;
     s_coast_accum_cm = 0.0f;
+    s_stabilize_cnt  = 0;
 
-    // 进入稳定阶段
+    // STABILIZING 期间预对准第一段航向
+    float first_yaw = g_ins.points[0].yaw_deg;
     Motor_Set_Ext_Control(1);
     Motor_Set_Ext_Speed(0.0f);
-    Motor_Set_Ext_Yaw(s_markers[0].yaw_deg + s_yaw_offset);
+    set_motor_yaw_abs(first_yaw);
 
     s_state = MS_STABILIZING;
 }
@@ -155,6 +195,10 @@ void Minesweep_Stop(void)
     s_state = MS_IDLE;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  1ms 状态机
+// ─────────────────────────────────────────────────────────────────────────────
+
 void Minesweep_Tick_1ms(void)
 {
     int16_t lrpm = Motor_Get_Left_Speed();
@@ -167,116 +211,97 @@ void Minesweep_Tick_1ms(void)
         case MS_DONE:
             break;
 
+        // ─── RECORDING: 与科目1完全相同，每 tick 记录 INS ────────────────
         case MS_RECORDING:
-            // 录制期间持续累积距离，供 Minesweep_MarkPoint() 读取
+        {
             INS_RecordTick(lrpm, rrpm, imu_sys.yaw);
             break;
+        }
 
-        // ─── STABILIZING: 等待 PID 平衡 ──────────────────────────
+        // ─── STABILIZING: PID 平衡，预对准第一段航向 ─────────────────────
         case MS_STABILIZING:
         {
+            float first_yaw = g_ins.points[0].yaw_deg;
+            set_motor_yaw_abs(first_yaw);
+
             s_stabilize_cnt++;
             if (s_stabilize_cnt >= MS_STABILIZE_MS)
             {
-                // 稳定完毕，开始第一段直线行驶
                 Motor_Set_Ext_Speed(MS_REPLAY_SPEED);
-                s_drive_accum_cm = 0.0f;
                 s_state = MS_DRIVING;
             }
             break;
         }
 
-        // ─── DRIVING: 直线段 yaw PID 跟踪 ────────────────────────
+        // ─── DRIVING: 纯 INS_ReplayTick 跟踪，按距离触发旋转点 ──────────
         case MS_DRIVING:
         {
-            // 累积当前直线段距离
-            s_drive_accum_cm += calc_delta_cm(lrpm, rrpm);
+            float target_abs = INS_ReplayTick(lrpm, rrpm);
+            set_motor_yaw_abs(target_abs);
 
-            // 目标 yaw = 当前 marker 的 raw yaw + offset（和科目1一样）
-            Motor_Set_Ext_Yaw(s_markers[s_cur_marker].yaw_deg + s_yaw_offset);
-
-            // 计算到下一个 marker 的距离
-            uint8_t next_idx = s_cur_marker + 1;
-            if (next_idx >= s_marker_count)
+            // 检查是否到达下一个旋转标记点
+            if (s_cur_marker < s_marker_count &&
+                g_ins.replay_distance_cm >= s_markers[s_cur_marker].dist_cm)
             {
-                // 不应发生，但保险起见
-                s_coast_accum_cm = 0.0f;
-                s_state = MS_COASTING;
+                float spin_dist = s_markers[s_cur_marker].dist_cm;
+                s_cur_marker++;
+
+                // 停车，计算旋转目标，进入斜坡PID旋转
+                Motor_Set_Ext_Speed(0.0f);
+                s_heading_target = calc_spin_target(spin_dist);
+                // 注意：不立即写 Motor_Set_Ext_Yaw，由斜坡生成器从当前位置推进
+                s_state = MS_SPIN_ALIGN;
                 break;
             }
 
-            float seg_dist = marker_segment_dist(s_cur_marker, next_idx);
-
-            if (s_drive_accum_cm >= seg_dist)
+            // INS 回放结束 → 滑行
+            if (INS_IsReplayDone())
             {
-                // 到达下一个 marker
-                s_cur_marker = next_idx;
-
-                if (s_cur_marker + 1 >= s_marker_count)
-                {
-                    // 到达最后一个点 → 滑行
-                    s_coast_accum_cm = 0.0f;
-                    s_state = MS_COASTING;
-                }
-                else
-                {
-                    // 中间点 → 旋转
-                    s_spin_accum_deg = 0.0f;
-                    s_spin_last_yaw  = imu_sys.yaw;
-                    Motor_Set_Spin(MS_SPIN_PWM);
-                    Motor_Set_Ext_Speed(0.0f);
-                    s_state = MS_SPINNING;
-                }
-            }
-            break;
-        }
-
-        // ─── SPINNING: 固定 PWM 差速旋转 720° ────────────────────
-        case MS_SPINNING:
-        {
-            // 累加 yaw 变化量 (处理 ±180° 跳变)
-            float delta = imu_sys.yaw - s_spin_last_yaw;
-            if (delta >  180.0f) delta -= 360.0f;
-            if (delta < -180.0f) delta += 360.0f;
-            s_spin_accum_deg += delta;
-            s_spin_last_yaw = imu_sys.yaw;
-
-            if (s_spin_accum_deg >= MS_SPIN_TOTAL_DEG)
-            {
-                // 旋转完成
-                Motor_Set_Spin(0);
                 Motor_Set_Ext_Speed(0.0f);
-                s_align_cnt = 0;
-                s_state = MS_SPIN_ALIGN;
+                s_coast_accum_cm = 0.0f;
+                s_state = MS_COASTING;
             }
             break;
         }
 
-        // ─── SPIN_ALIGN: 等待 IMU 稳定，重新映射 yaw offset ────
+        // ─── SPIN_ALIGN: 斜坡生成器 + 闭环 PID 旋转对齐 ─────────────────
+        //
+        //  每 tick 最多推进 MS_SPIN_STEP_DEG_PER_MS 度，
+        //  Motor PID 误差始终 ≤ 0.072°，彻底消除阶跃输入引起的微分爆炸
+        //
         case MS_SPIN_ALIGN:
         {
-            s_align_cnt++;
-            if (s_align_cnt >= MS_SPIN_ALIGN_MS)
+            float step_max      = MS_SPIN_STEP_DEG_PER_MS;
+            float cur_ext_yaw   = Motor_Get_Ext_Yaw();
+            float err_to_target = s_heading_target - cur_ext_yaw;
+
+            if      (err_to_target >  step_max) cur_ext_yaw += step_max;
+            else if (err_to_target < -step_max) cur_ext_yaw -= step_max;
+            else                                cur_ext_yaw  = s_heading_target;
+
+            Motor_Set_Ext_Yaw(cur_ext_yaw);
+
+            // 完成判定：斜坡走完 AND 实际连续 yaw 跟随误差 < 2°
+            float cur_cont = Motor_Get_Yaw_Continuous();
+            if ((cur_ext_yaw == s_heading_target) &&
+                (fabsf(cur_cont - s_heading_target) <= 2.0f))
             {
-                // 重新计算 yaw offset
-                // 下一段要追踪的是 markers[s_cur_marker] 的 yaw
-                s_yaw_offset = Motor_Get_Yaw_Continuous() - s_markers[s_cur_marker].yaw_deg;
-
-                // 锁定当前 yaw 目标，防止突然转动
-                Motor_Set_Ext_Yaw(Motor_Get_Yaw_Continuous());
-
-                // 开始下一段直线
-                s_drive_accum_cm = 0.0f;
+                // 锁定当前 yaw，防 PID 冲击，恢复行驶
+                Motor_Set_Ext_Yaw(cur_cont);
                 Motor_Set_Ext_Speed(MS_REPLAY_SPEED);
                 s_state = MS_DRIVING;
             }
             break;
         }
 
-        // ─── COASTING: 最后滑行 ──────────────────────────────────
+        // ─── COASTING: 终点滑行 ──────────────────────────────────────────
         case MS_COASTING:
         {
-            s_coast_accum_cm += calc_delta_cm(lrpm, rrpm);
+            float avg_rpm = ((float)lrpm + (float)rrpm) * 0.5f;
+            float delta_cm = fabsf((avg_rpm / 60.0f)
+                             * (2.0f * 3.1415926f * INS_WHEEL_RADIUS)
+                             * INS_SAMPLE_DT * 100.0f);
+            s_coast_accum_cm += delta_cm;
 
             if (s_coast_accum_cm >= MS_COAST_CM)
             {
@@ -284,11 +309,14 @@ void Minesweep_Tick_1ms(void)
                 Motor_Set_Ext_Control(0);
                 s_state = MS_DONE;
             }
-            // yaw 和 speed 维持不变
             break;
         }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  查询接口
+// ─────────────────────────────────────────────────────────────────────────────
 
 ms_state_t Minesweep_GetState(void)
 {
@@ -307,10 +335,12 @@ float Minesweep_GetRecordDistance(void)
 
 uint8_t Minesweep_GetReplayProgress(void)
 {
-    if (s_marker_count < 2) return 0;
+    if (g_ins.point_count == 0) return 0;
 
-    // 进度 = 当前 marker 索引 / (总marker数 - 1) * 100
-    float pct = ((float)s_cur_marker / (float)(s_marker_count - 1)) * 100.0f;
+    float total_cm = (float)(g_ins.point_count - 1) * INS_RECORD_SPACING_CM;
+    if (total_cm < 1.0f) return 0;
+
+    float pct = (g_ins.replay_distance_cm / total_cm) * 100.0f;
     if (pct > 100.0f) pct = 100.0f;
     return (uint8_t)pct;
 }

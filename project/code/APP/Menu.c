@@ -367,8 +367,8 @@ static void draw_subject1_page(void)
 // ─── 科目2 定点排雷子菜单绘制 ─────────────────────────────────────────────────
 #define SUBJ2_ITEM_COUNT  3
 static const char *s_subj2_items[SUBJ2_ITEM_COUNT] = {
-    "Record Points",
-    "Mark Point",
+    "Record/Stop",
+    "Mark Rotation",
     "Start Replay",
 };
 
@@ -381,8 +381,7 @@ static const char *ms_state_str(ms_state_t st)
         case MS_READY:        return "READY  ";
         case MS_STABILIZING:  return "STAB.. ";
         case MS_DRIVING:      return "DRIVE. ";
-        case MS_SPINNING:     return "SPIN.. ";
-        case MS_SPIN_ALIGN:   return "ALIGN. ";
+        case MS_SPIN_ALIGN:   return "SPIN.. ";
         case MS_COASTING:     return "COAST. ";
         case MS_DONE:         return "DONE   ";
         default:              return "???    ";
@@ -418,33 +417,33 @@ static void draw_subject2_page(void)
         }
     }
 
-    // 数据行
-    snprintf(buf, sizeof(buf), "Mk:%2d Dist:%6.1fcm",
+    // 数据行：标记点数 + 距离/进度
+    snprintf(buf, sizeof(buf), "Mk:%2d Dist:%6.1fcm ",
              Minesweep_GetMarkerCount(), Minesweep_GetRecordDistance());
-    ips200_show_string(0, ROW(5), buf);
+    ips200_show_string(0, ROW(6), buf);
 
     if (mst == MS_RECORDING)
     {
         snprintf(buf, sizeof(buf), "Yaw:%+7.2f deg    ", imu_sys.yaw);
-        ips200_show_string(0, ROW(6), buf);
+        ips200_show_string(0, ROW(7), buf);
     }
     else if (mst >= MS_DRIVING && mst <= MS_COASTING)
     {
         snprintf(buf, sizeof(buf), "Progress: %3d%%    ", Minesweep_GetReplayProgress());
-        ips200_show_string(0, ROW(6), buf);
+        ips200_show_string(0, ROW(7), buf);
     }
     else if (mst == MS_DONE)
     {
         snprintf(buf, sizeof(buf), "Done! Markers: %2d  ", Minesweep_GetMarkerCount());
-        ips200_show_string(0, ROW(6), buf);
+        ips200_show_string(0, ROW(7), buf);
     }
     else
     {
-        ips200_show_string(0, ROW(6), "                    ");
+        ips200_show_string(0, ROW(7), "                    ");
     }
 
-    ips200_show_string(0, ROW(7), "[0]Dn [1]Up [2]OK  ");
-    ips200_show_string(0, ROW(8), "[3]Back/Stop       ");
+    ips200_show_string(0, ROW(8), "[0]Dn [1]Up [2]OK  ");
+    ips200_show_string(0, ROW(9), "[3]Back/Stop       ");
 }
 
 // ─── 路径绘制 ──────────────────────────────────────────────────────────────
@@ -907,7 +906,7 @@ void Menu_Process(void)
             }
             else if (key_pressed(KEY_3)) // 确认
             {
-                if (s_subj2_sel == 0)  // Record Points (toggle)
+                if (s_subj2_sel == 0)  // Record/Stop (toggle)
                 {
                     if (mst == MS_IDLE || mst == MS_DONE)
                     {
@@ -918,11 +917,11 @@ void Menu_Process(void)
                         Minesweep_StopRecord();
                     }
                 }
-                else if (s_subj2_sel == 1)  // Mark Point
+                else if (s_subj2_sel == 1)  // Mark Rotation
                 {
                     if (mst == MS_RECORDING)
                     {
-                        Minesweep_MarkPoint();
+                        Minesweep_MarkRotation();
                     }
                 }
                 else if (s_subj2_sel == 2)  // Start Replay
@@ -937,8 +936,8 @@ void Menu_Process(void)
             else if (key_pressed(KEY_4)) // 返回 / 停止
             {
                 if (mst == MS_RECORDING || mst == MS_STABILIZING ||
-                    mst == MS_DRIVING    || mst == MS_SPINNING ||
-                    mst == MS_SPIN_ALIGN || mst == MS_COASTING)
+                    mst == MS_DRIVING    || mst == MS_SPIN_ALIGN ||
+                    mst == MS_COASTING)
                 {
                     Minesweep_Stop();
                 }
