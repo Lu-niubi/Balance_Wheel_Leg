@@ -35,6 +35,8 @@
 
 #include "zf_common_headfile.h"
 #include "RemoteController.h" 
+#include "zf_common_typedef.h"
+
 // 打开新的工程或者工程移动了位置务必执行以下操作
 // 第一步 关闭上面所有打开的文件
 // 第二步 project->clean  等待下方进度条走完

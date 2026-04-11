@@ -23,9 +23,9 @@ static float InvSqrt(float x)
 void IMU_Gyro_Calibration(void)
 {
     float sum_gx = 0, sum_gy = 0, sum_gz = 0;
-    const uint16_t samples = 3000;
+    const uint16 samples = 3000;
 
-    for (uint16_t i = 0; i < samples; i++)
+    for (uint16 i = 0; i < samples; i++)
     {
         imu660ra_get_gyro();
         sum_gx += (float)imu660ra_gyro_x;

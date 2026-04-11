@@ -1,6 +1,6 @@
 /**
- * @file   Menu.c
- * @brief  串口屏菜单系统实现
+ * @file    Menu.c
+ * @brief   串口屏菜单系统实现 (按键快照优化版)
  */
 
 #include "Menu.h"
@@ -78,16 +78,16 @@ static const float s_pid_steps[PID_ITEM_COUNT] = {10.0f, 0.2f, 0.001f, 0.01f};
 
 #ifdef MENU_STARTUP_PID_TUNE
 static menu_state_t s_state        = STATE_STARTUP_PID;
-static uint8_t      s_startup_done = 0;  // 启动阶段完成标志
+static uint8      s_startup_done = 0;  // 启动阶段完成标志
 #else
 static menu_state_t s_state        = STATE_MAIN_MENU;
-static uint8_t      s_startup_done = 1;  // 跳过预调，直接视为已完成
+static uint8      s_startup_done = 1;  // 跳过预调，直接视为已完成
 #endif
 static int8_t       s_main_sel    = 0;   // 主菜单光标
 static int8_t       s_pid_sel     = 0;   // PID 列表光标
-static int8_t       s_subj1_sel   = 0;   // 科目1子菜单光标 (0=取点, 1=启动)
+static int8_t       s_subj1_sel   = 0;   // 科目1子菜单光标
 static int8_t       s_subj2_sel   = 0;   // 科目2子菜单光标
-static uint8_t      s_need_redraw = 1;   // 强制刷屏标志
+static uint8      s_need_redraw = 1;   // 强制刷屏标志
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  获取当前 PID 参数值指针 (全局变量)
@@ -129,8 +129,8 @@ static void draw_title(const char *title)
 {
     ips200_set_color(COLOR_WHITE, COLOR_BLUE);
     // 填充标题背景行
-    for (uint16_t x = 0; x < 240; x++)
-        for (uint16_t y = 0; y < FONT_H; y++)
+    for (uint16 x = 0; x < 240; x++)
+        for (uint16 y = 0; y < FONT_H; y++)
             ips200_draw_point(x, y, COLOR_BLUE);
     ips200_show_string(4, 0, title);
     ips200_set_color(COLOR_WHITE, COLOR_BLACK);
@@ -142,7 +142,7 @@ static void draw_main_menu(void)
     draw_title("  === MENU ===  ");
     for (int8_t i = 0; i < MAIN_ITEM_COUNT; i++)
     {
-        uint16_t y = ROW(i + 1) + 4;
+        uint16 y = ROW(i + 1) + 4;
         if (i == s_main_sel)
         {
             ips200_set_color(COLOR_BLACK, COLOR_SELECTED);
@@ -188,11 +188,10 @@ static void draw_imu_page(void)
 static void draw_pid_list(void)
 {
     char buf[32];
-    // 不调用 ips200_clear()，直接覆盖写各行，避免闪屏
     float vals[PID_ITEM_COUNT] = {GYRO_KP, ANG_KP, ANG_KI, ANG_KD};
     for (int8_t i = 0; i < PID_ITEM_COUNT; i++)
     {
-        uint16_t y = ROW(i + 1) + 4;
+        uint16 y = ROW(i + 1) + 4;
         snprintf(buf, sizeof(buf), "%s: %7.4f", s_pid_items[i], vals[i]);
         if (i == s_pid_sel)
         {
@@ -218,7 +217,6 @@ static void draw_pid_edit(void)
     float *pval = get_global_pid_var(s_pid_sel);
     float  val  = pval ? *pval : 0.0f;
 
-    // 不调用 ips200_clear()，直接覆盖写各行，避免闪屏
     snprintf(buf, sizeof(buf), "Param: %s  ", s_pid_items[s_pid_sel]);
     ips200_set_color(COLOR_WHITE, COLOR_BLACK);
     ips200_show_string(0, ROW(2), buf);
@@ -261,16 +259,13 @@ static void draw_gps_page(void)
     char buf[32];
     ips200_set_color(COLOR_WHITE, COLOR_BLACK);
 
-    snprintf(buf, sizeof(buf), "Date:%04d-%02d-%02d",
-             gnss.time.year, gnss.time.month, gnss.time.day);
+    snprintf(buf, sizeof(buf), "Date:%04d-%02d-%02d", gnss.time.year, gnss.time.month, gnss.time.day);
     ips200_show_string(0, ROW(1), buf);
 
-    snprintf(buf, sizeof(buf), "Time:%02d:%02d:%02d",
-             gnss.time.hour, gnss.time.minute, gnss.time.second);
+    snprintf(buf, sizeof(buf), "Time:%02d:%02d:%02d", gnss.time.hour, gnss.time.minute, gnss.time.second);
     ips200_show_string(0, ROW(2), buf);
 
-    snprintf(buf, sizeof(buf), "Fix:%s Sat:%2d",
-             gnss.state ? "OK" : "--", gnss.satellite_used);
+    snprintf(buf, sizeof(buf), "Fix:%s Sat:%2d", gnss.state ? "OK" : "--", gnss.satellite_used);
     ips200_show_string(0, ROW(3), buf);
 
     snprintf(buf, sizeof(buf), "Lat:%+11.6f", gnss.latitude);
@@ -279,8 +274,7 @@ static void draw_gps_page(void)
     snprintf(buf, sizeof(buf), "Lon:%+11.6f", gnss.longitude);
     ips200_show_string(0, ROW(5), buf);
 
-    snprintf(buf, sizeof(buf), "Spd:%5.2f Dir:%6.2f",
-             gnss.speed, gnss.direction);
+    snprintf(buf, sizeof(buf), "Spd:%5.2f Dir:%6.2f", gnss.speed, gnss.direction);
     ips200_show_string(0, ROW(6), buf);
 
     snprintf(buf, sizeof(buf), "Alt:%7.2f m", gnss.height);
@@ -314,18 +308,16 @@ static const char *chassic_state_str(chassic_state_t st)
 static void draw_subject1_page(void)
 {
     char buf[32];
-
-    // 状态信息
     chassic_state_t cst = Chassic_GetState();
+    
     snprintf(buf, sizeof(buf), "State: %s", chassic_state_str(cst));
     ips200_set_color(COLOR_GREEN, COLOR_BLACK);
     ips200_show_string(0, ROW(1), buf);
     ips200_set_color(COLOR_WHITE, COLOR_BLACK);
 
-    // 菜单条目
     for (int8_t i = 0; i < SUBJ1_ITEM_COUNT; i++)
     {
-        uint16_t y = ROW(i + 2) + 4;
+        uint16 y = ROW(i + 2) + 4;
         if (i == s_subj1_sel)
         {
             ips200_set_color(COLOR_BLACK, COLOR_SELECTED);
@@ -340,23 +332,18 @@ static void draw_subject1_page(void)
         }
     }
 
-    // 数据行
-    snprintf(buf, sizeof(buf), "Pts:%4d Dist:%6.1fcm",
-             Chassic_GetRecordCount(), Chassic_GetRecordDistance());
+    snprintf(buf, sizeof(buf), "Pts:%4d Dist:%6.1fcm", Chassic_GetRecordCount(), Chassic_GetRecordDistance());
     ips200_show_string(0, ROW(5), buf);
 
-    if (cst == CHASSIC_RECORDING)
-    {
+    if (cst == CHASSIC_RECORDING) {
         snprintf(buf, sizeof(buf), "Yaw:%+7.2f deg    ", imu_sys.yaw);
         ips200_show_string(0, ROW(6), buf);
     }
-    else if (cst == CHASSIC_REPLAYING || cst == CHASSIC_COASTING || cst == CHASSIC_DONE)
-    {
+    else if (cst == CHASSIC_REPLAYING || cst == CHASSIC_COASTING || cst == CHASSIC_DONE) {
         snprintf(buf, sizeof(buf), "Progress: %3d%%    ", Chassic_GetReplayProgress());
         ips200_show_string(0, ROW(6), buf);
     }
-    else
-    {
+    else {
         ips200_show_string(0, ROW(6), "                    ");
     }
 
@@ -391,18 +378,16 @@ static const char *ms_state_str(ms_state_t st)
 static void draw_subject2_page(void)
 {
     char buf[32];
-
-    // 状态信息
     ms_state_t mst = Minesweep_GetState();
+    
     snprintf(buf, sizeof(buf), "State: %s", ms_state_str(mst));
     ips200_set_color(COLOR_GREEN, COLOR_BLACK);
     ips200_show_string(0, ROW(1), buf);
     ips200_set_color(COLOR_WHITE, COLOR_BLACK);
 
-    // 菜单条目
     for (int8_t i = 0; i < SUBJ2_ITEM_COUNT; i++)
     {
-        uint16_t y = ROW(i + 2) + 4;
+        uint16 y = ROW(i + 2) + 4;
         if (i == s_subj2_sel)
         {
             ips200_set_color(COLOR_BLACK, COLOR_SELECTED);
@@ -417,28 +402,22 @@ static void draw_subject2_page(void)
         }
     }
 
-    // 数据行：标记点数 + 距离/进度
-    snprintf(buf, sizeof(buf), "Mk:%2d Dist:%6.1fcm ",
-             Minesweep_GetMarkerCount(), Minesweep_GetRecordDistance());
+    snprintf(buf, sizeof(buf), "Mk:%2d Dist:%6.1fcm ", Minesweep_GetMarkerCount(), Minesweep_GetRecordDistance());
     ips200_show_string(0, ROW(6), buf);
 
-    if (mst == MS_RECORDING)
-    {
+    if (mst == MS_RECORDING) {
         snprintf(buf, sizeof(buf), "Yaw:%+7.2f deg    ", imu_sys.yaw);
         ips200_show_string(0, ROW(7), buf);
     }
-    else if (mst >= MS_DRIVING && mst <= MS_COASTING)
-    {
+    else if (mst >= MS_DRIVING && mst <= MS_COASTING) {
         snprintf(buf, sizeof(buf), "Progress: %3d%%    ", Minesweep_GetReplayProgress());
         ips200_show_string(0, ROW(7), buf);
     }
-    else if (mst == MS_DONE)
-    {
+    else if (mst == MS_DONE) {
         snprintf(buf, sizeof(buf), "Done! Markers: %2d  ", Minesweep_GetMarkerCount());
         ips200_show_string(0, ROW(7), buf);
     }
-    else
-    {
+    else {
         ips200_show_string(0, ROW(7), "                    ");
     }
 
@@ -446,112 +425,10 @@ static void draw_subject2_page(void)
     ips200_show_string(0, ROW(9), "[3]Back/Stop       ");
 }
 
-// ─── 路径绘制 ──────────────────────────────────────────────────────────────
-
-/**
- * @brief  将 int16_t 坐标钳制到屏幕范围并转为 uint16_t，供 ips200_draw_line 安全使用
- */
-static uint16_t clamp_px(int16_t v, int16_t max_v)
-{
-    if (v < 0)     return 0;
-    if (v >= max_v) return (uint16_t)(max_v - 1);
-    return (uint16_t)v;
-}
-
-/**
- * @brief  用INS路径绘制器将走过的路径画到屏幕上
- *         北向向上，东向向右，自适应缩放
- */
-static void draw_ins_path(void)
-{
-    if (INS_GetPointCount() == 0)
-        return;
-
-    int16_t scr_w = (int16_t)ips200_width_max;
-    int16_t scr_h = (int16_t)ips200_height_max;
-
-    // ── 第一遍：计算路径 x/y 的包围盒 ──
-    float x_min = 0.0f, x_max = 0.0f;
-    float y_min = 0.0f, y_max = 0.0f;
-    float x, y;
-
-    INS_PathDrawInit();
-    while (INS_PathDrawNext(&x, &y))
-    {
-        if (x < x_min) x_min = x;
-        if (x > x_max) x_max = x;
-        if (y < y_min) y_min = y;
-        if (y > y_max) y_max = y;
-    }
-
-    // 路径范围（cm），至少10cm避免除零和过度放大
-    float range_x = (x_max - x_min);
-    float range_y = (y_max - y_min);
-    if (range_x < 10.0f) range_x = 10.0f;
-    if (range_y < 10.0f) range_y = 10.0f;
-
-    // 可用绘图区：上方留标题2行(32px)，其余各留6px边距
-    int16_t left   = 6;
-    int16_t top    = 38;
-    int16_t right  = scr_w - 6;
-    int16_t bottom = scr_h - 6;
-    int16_t draw_w = right - left;
-    int16_t draw_h = bottom - top;
-
-    // 等比缩放，取较小值
-    float scale_x = (float)draw_w / range_x;
-    float scale_y = (float)draw_h / range_y;
-    float scale   = (scale_x < scale_y) ? scale_x : scale_y;
-
-    // 起点 (0,0) 对应的锚点像素坐标（int32_t 中间量避免溢出）
-    // x轴：将 x_min 对齐到 left
-    // y轴：将 y_max 对齐到 top（屏幕 y 向下，路径 y 向上）
-    int16_t anchor_x = left  + (int16_t)((-x_min) * scale + 0.5f);
-    int16_t anchor_y = top   + (int16_t)(( y_max) * scale + 0.5f);
-
-    // 钳制锚点到屏幕内（保证红色起点十字不越界）
-    if (anchor_x < left)   anchor_x = left;
-    if (anchor_x >= right)  anchor_x = right - 1;
-    if (anchor_y < top)    anchor_y = top;
-    if (anchor_y >= bottom) anchor_y = bottom - 1;
-
-    // ── 第二遍：画路径折线 ──
-    uint16_t px0 = (uint16_t)anchor_x;
-    uint16_t py0 = (uint16_t)anchor_y;
-    uint16_t draw_idx = 0;
-
-    INS_PathDrawInit();
-    while (INS_PathDrawNext(&x, &y))
-    {
-        int16_t px_i = anchor_x + (int16_t)(x * scale + 0.5f);
-        int16_t py_i = anchor_y - (int16_t)(y * scale + 0.5f);
-
-        uint16_t px = clamp_px(px_i, scr_w);
-        uint16_t py = clamp_px(py_i, scr_h);
-
-        if (draw_idx > 0)
-            ips200_draw_line(px0, py0, px, py, COLOR_GREEN);
-
-        px0 = px;
-        py0 = py;
-        draw_idx++;
-    }
-
-    // ── 红色十字标记起点 ──
-    if (anchor_x >= 4 && anchor_x < scr_w - 4 &&
-        anchor_y >= 4 && anchor_y < scr_h - 4)
-    {
-        ips200_draw_line((uint16_t)(anchor_x - 4), (uint16_t)anchor_y,
-                         (uint16_t)(anchor_x + 4), (uint16_t)anchor_y, COLOR_RED);
-        ips200_draw_line((uint16_t)anchor_x, (uint16_t)(anchor_y - 4),
-                         (uint16_t)anchor_x, (uint16_t)(anchor_y + 4), COLOR_RED);
-    }
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
-//  按键读取并清除 (防止重复触发)
+//  按键读取并清除 (底层驱动)
 // ─────────────────────────────────────────────────────────────────────────────
-static uint8_t key_pressed(key_index_enum k)
+static uint8 key_pressed(key_index_enum k)
 {
     if (key_get_state(k) == KEY_SHORT_PRESS)
     {
@@ -575,7 +452,6 @@ void Menu_Init(void)
 #ifdef MENU_STARTUP_PID_TUNE
     s_state        = STATE_STARTUP_PID;
     s_startup_done = 0;
-    // 启动页：直接画标题，正文由 draw_pid_edit 覆盖写
     draw_title("  PRE-TUNE PID  ");
     ips200_show_string(0, ROW(1), "[0]+  [1]-  [2]Next ");
 #else
@@ -585,26 +461,34 @@ void Menu_Init(void)
 #endif
 }
 
-uint8_t Menu_IsStartupDone(void)
+uint8 Menu_IsStartupDone(void)
 {
     return s_startup_done;
 }
 
 void Menu_Process(void)
 {
+    // =========================================================================
+    // 【核心优化】：按键快照 (Snapshot)
+    // 在函数入口处，一次性抓取当前所有按键的状态并存储。
+    // 这样无论后面的画屏函数 (draw_xxx) 耗时多久，都不会错过这个周期的按键脉冲。
+    // =========================================================================
+    uint8 btn1 = key_pressed(KEY_1); // 下 / +
+    uint8 btn2 = key_pressed(KEY_2); // 上 / -
+    uint8 btn3 = key_pressed(KEY_3); // 确认(OK) / Next
+    uint8 btn4 = key_pressed(KEY_4); // 返回 / Stop
+
     // 动态页面（IMU/Speed）每约100ms刷新一次
-    static uint32_t refresh_tick = 0;
-    uint8_t do_refresh = 0;
+    static uint32 refresh_tick = 0;
+    uint8 do_refresh = 0;
     if (++refresh_tick >= 100) { refresh_tick = 0; do_refresh = 1; }
 
     switch (s_state)
     {
         // ──────────────────────────────────────────────
-        // 启动预调 PID 阶段：顺序逐一确认全部4个参数，全部确认后才开始运行
         case STATE_STARTUP_PID:
         {
 #ifndef MENU_STARTUP_PID_TUNE
-            // 宏未定义时不应进入此分支，直接跳主菜单
             s_state = STATE_MAIN_MENU;
             s_startup_done = 1;
             s_need_redraw = 1;
@@ -613,7 +497,6 @@ void Menu_Process(void)
             if (s_need_redraw)
             {
                 draw_pid_edit();
-                // 顶部提示当前是第几步
                 char step_buf[24];
                 snprintf(step_buf, sizeof(step_buf), "Step %d/4           ", s_pid_sel + 1);
                 ips200_set_color(COLOR_YELLOW, COLOR_BLACK);
@@ -625,25 +508,23 @@ void Menu_Process(void)
             float *pval = get_global_pid_var(s_pid_sel);
             float  step = s_pid_steps[s_pid_sel];
 
-            if (key_pressed(KEY_1) && pval)       // 增大 (原下)
+            if (btn1 && pval)       // 增大
             {
                 *pval += step;
                 s_need_redraw = 1;
             }
-            else if (key_pressed(KEY_2) && pval)  // 减小 (原上)
+            else if (btn2 && pval)  // 减小
             {
                 *pval -= step;
                 s_need_redraw = 1;
             }
-            else if (key_pressed(KEY_3))          // 确认当前参数，前进到下一个
+            else if (btn3)          // 确认当前参数
             {
                 if (pval) sync_pid_to_instance(s_pid_sel);
-                printf("[Startup] %s=%.4f confirmed.\r\n",
-                       s_pid_items[s_pid_sel], pval ? *pval : 0.0f);
+                printf("[Startup] %s=%.4f confirmed.\r\n", s_pid_items[s_pid_sel], pval ? *pval : 0.0f);
 
                 if (s_pid_sel < PID_ITEM_COUNT - 1)
                 {
-                    // 还有下一个参数，继续
                     s_pid_sel++;
                     ips200_clear();
                     draw_title("  PRE-TUNE PID  ");
@@ -651,8 +532,7 @@ void Menu_Process(void)
                 }
                 else
                 {
-                    // 全部4个参数都确认完毕，开始运行
-                    printf("[Startup] All params confirmed. Starting control.\r\n");
+                    printf("[Startup] All params confirmed.\r\n");
                     s_startup_done = 1;
                     s_state = STATE_MAIN_MENU;
                     s_need_redraw = 1;
@@ -666,58 +546,24 @@ void Menu_Process(void)
         {
             if (s_need_redraw) { draw_main_menu(); s_need_redraw = 0; }
 
-            if (key_pressed(KEY_1))      // 下 (原上)
+            if (btn1)      // 下
             {
                 s_main_sel = (s_main_sel + 1) % MAIN_ITEM_COUNT;
                 s_need_redraw = 1;
             }
-            else if (key_pressed(KEY_2)) // 上 (原下)
+            else if (btn2) // 上
             {
                 s_main_sel = (s_main_sel + MAIN_ITEM_COUNT - 1) % MAIN_ITEM_COUNT;
                 s_need_redraw = 1;
             }
-            else if (key_pressed(KEY_3)) // 确认
+            else if (btn3) // 确认
             {
-                if (s_main_sel == 0)
-                {
-                    s_state = STATE_IMU;
-                    ips200_clear();
-                    draw_title("  IMU Data      ");
-                }
-                else if (s_main_sel == 1)
-                {
-                    s_state = STATE_PID_LIST;
-                    s_pid_sel = 0;
-                    // 进入PID列表时清屏一次并画标题，之后靠覆盖写
-                    ips200_clear();
-                    draw_title("  PID Params    ");
-                }
-                else if (s_main_sel == 2)
-                {
-                    s_state = STATE_SPEED;
-                    ips200_clear();
-                    draw_title("  Speed         ");
-                }
-                else if (s_main_sel == 3)
-                {
-                    s_state = STATE_GPS;
-                    ips200_clear();
-                    draw_title("  GPS Info      ");
-                }
-                else if (s_main_sel == 4)
-                {
-                    s_state = STATE_SUBJECT1;
-                    s_subj1_sel = 0;
-                    ips200_clear();
-                    draw_title(" Subject1 INS   ");
-                }
-                else if (s_main_sel == 5)
-                {
-                    s_state = STATE_SUBJECT2;
-                    s_subj2_sel = 0;
-                    ips200_clear();
-                    draw_title(" Subject2 Mine  ");
-                }
+                if (s_main_sel == 0)      { s_state = STATE_IMU;      ips200_clear(); draw_title("  IMU Data      "); }
+                else if (s_main_sel == 1) { s_state = STATE_PID_LIST; s_pid_sel = 0; ips200_clear(); draw_title("  PID Params    "); }
+                else if (s_main_sel == 2) { s_state = STATE_SPEED;    ips200_clear(); draw_title("  Speed         "); }
+                else if (s_main_sel == 3) { s_state = STATE_GPS;      ips200_clear(); draw_title("  GPS Info      "); }
+                else if (s_main_sel == 4) { s_state = STATE_SUBJECT1; s_subj1_sel = 0; ips200_clear(); draw_title(" Subject1 INS   "); }
+                else if (s_main_sel == 5) { s_state = STATE_SUBJECT2; s_subj2_sel = 0; ips200_clear(); draw_title(" Subject2 Mine  "); }
                 s_need_redraw = 1;
             }
             break;
@@ -727,78 +573,47 @@ void Menu_Process(void)
         case STATE_IMU:
         {
             if (s_need_redraw || do_refresh) { draw_imu_page(); s_need_redraw = 0; }
-
-            if (key_pressed(KEY_4))
-            {
-                s_state = STATE_MAIN_MENU;
-                s_need_redraw = 1;
-            }
+            if (btn4) { s_state = STATE_MAIN_MENU; s_need_redraw = 1; }
             break;
         }
 
         // ──────────────────────────────────────────────
         case STATE_PID_LIST:
         {
-            // 只在 s_need_redraw 时重绘，不走 do_refresh（静态页面，无需定时刷新）
             if (s_need_redraw) { draw_pid_list(); s_need_redraw = 0; }
 
-            if (key_pressed(KEY_1))
-            {
-                s_pid_sel = (s_pid_sel + 1) % PID_ITEM_COUNT;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_2))
-            {
-                s_pid_sel = (s_pid_sel + PID_ITEM_COUNT - 1) % PID_ITEM_COUNT;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_3))  // 进入编辑
+            if (btn1)      { s_pid_sel = (s_pid_sel + 1) % PID_ITEM_COUNT; s_need_redraw = 1; }
+            else if (btn2) { s_pid_sel = (s_pid_sel + PID_ITEM_COUNT - 1) % PID_ITEM_COUNT; s_need_redraw = 1; }
+            else if (btn3) 
             {
                 s_state = STATE_PID_EDIT;
-                // 进入编辑时清屏一次并画标题，之后靠覆盖写
                 ips200_clear();
                 draw_title("  Edit PID      ");
                 s_need_redraw = 1;
             }
-            else if (key_pressed(KEY_4))  // 返回主菜单
-            {
-                s_state = STATE_MAIN_MENU;
-                s_need_redraw = 1;
-            }
+            else if (btn4) { s_state = STATE_MAIN_MENU; s_need_redraw = 1; }
             break;
         }
 
         // ──────────────────────────────────────────────
         case STATE_PID_EDIT:
         {
-            // 只在 s_need_redraw 时重绘（覆盖写，不闪）
             if (s_need_redraw) { draw_pid_edit(); s_need_redraw = 0; }
 
             float *pval = get_global_pid_var(s_pid_sel);
             float  step = s_pid_steps[s_pid_sel];
 
-            if (key_pressed(KEY_1) && pval)       // 增大 (原下)
-            {
-                *pval += step;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_2) && pval)  // 减小 (原上)
-            {
-                *pval -= step;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_3))           // 确认写入单片机
+            if (btn1 && pval)      { *pval += step; s_need_redraw = 1; }
+            else if (btn2 && pval) { *pval -= step; s_need_redraw = 1; }
+            else if (btn3)         
             {
                 if (pval) sync_pid_to_instance(s_pid_sel);
-                printf("[Menu] %s set to %.4f\r\n", s_pid_items[s_pid_sel],
-                       pval ? *pval : 0.0f);
                 s_state = STATE_PID_LIST;
-                // 返回列表时清屏一次并画标题
                 ips200_clear();
                 draw_title("  PID Params    ");
                 s_need_redraw = 1;
             }
-            else if (key_pressed(KEY_4))           // 取消，不写入
+            else if (btn4)         
             {
                 s_state = STATE_PID_LIST;
                 ips200_clear();
@@ -812,12 +627,7 @@ void Menu_Process(void)
         case STATE_SPEED:
         {
             if (s_need_redraw || do_refresh) { draw_speed_page(); s_need_redraw = 0; }
-
-            if (key_pressed(KEY_4))
-            {
-                s_state = STATE_MAIN_MENU;
-                s_need_redraw = 1;
-            }
+            if (btn4) { s_state = STATE_MAIN_MENU; s_need_redraw = 1; }
             break;
         }
 
@@ -826,12 +636,7 @@ void Menu_Process(void)
         {
             GPS_Update();
             if (s_need_redraw || do_refresh) { draw_gps_page(); s_need_redraw = 0; }
-
-            if (key_pressed(KEY_4))
-            {
-                s_state = STATE_MAIN_MENU;
-                s_need_redraw = 1;
-            }
+            if (btn4) { s_state = STATE_MAIN_MENU; s_need_redraw = 1; }
             break;
         }
 
@@ -842,43 +647,24 @@ void Menu_Process(void)
 
             chassic_state_t cst = Chassic_GetState();
 
-            if (key_pressed(KEY_1))      // 下 (原上)
+            if (btn1)      { s_subj1_sel = (s_subj1_sel + 1) % SUBJ1_ITEM_COUNT; s_need_redraw = 1; }
+            else if (btn2) { s_subj1_sel = (s_subj1_sel + SUBJ1_ITEM_COUNT - 1) % SUBJ1_ITEM_COUNT; s_need_redraw = 1; }
+            else if (btn3) 
             {
-                s_subj1_sel = (s_subj1_sel + 1) % SUBJ1_ITEM_COUNT;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_2)) // 上 (原下)
-            {
-                s_subj1_sel = (s_subj1_sel + SUBJ1_ITEM_COUNT - 1) % SUBJ1_ITEM_COUNT;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_3)) // 确认
-            {
-                if (s_subj1_sel == 0)  // Record Path
+                if (s_subj1_sel == 0) 
                 {
-                    if (cst == CHASSIC_IDLE || cst == CHASSIC_DONE)
-                    {
-                        Chassic_StartRecord();
-                    }
-                    else if (cst == CHASSIC_RECORDING)
-                    {
-                        Chassic_StopRecord();
-                    }
+                    if (cst == CHASSIC_IDLE || cst == CHASSIC_DONE) Chassic_StartRecord();
+                    else if (cst == CHASSIC_RECORDING) Chassic_StopRecord();
                 }
-                else if (s_subj1_sel == 1)  // Start Replay
+                else if (s_subj1_sel == 1) 
                 {
-                    if (cst == CHASSIC_READY)
-                    {
-                        Chassic_StartReplay();
-                    }
+                    if (cst == CHASSIC_READY) Chassic_StartReplay();
                 }
                 s_need_redraw = 1;
             }
-            else if (key_pressed(KEY_4)) // 返回 / 停止
+            else if (btn4) 
             {
-                if (cst == CHASSIC_RECORDING || cst == CHASSIC_STABILIZING ||
-                    cst == CHASSIC_REPLAYING  || cst == CHASSIC_COASTING)
-                {
+                if (cst != CHASSIC_IDLE && cst != CHASSIC_DONE && cst != CHASSIC_READY) {
                     Chassic_Stop();
                 }
                 s_state = STATE_MAIN_MENU;
@@ -894,58 +680,42 @@ void Menu_Process(void)
 
             ms_state_t mst = Minesweep_GetState();
 
-            if (key_pressed(KEY_1))      // 下
+            if (btn1)      { s_subj2_sel = (s_subj2_sel + 1) % SUBJ2_ITEM_COUNT; s_need_redraw = 1; }
+            else if (btn2) { s_subj2_sel = (s_subj2_sel + SUBJ2_ITEM_COUNT - 1) % SUBJ2_ITEM_COUNT; s_need_redraw = 1; }
+            else if (btn3) 
             {
-                s_subj2_sel = (s_subj2_sel + 1) % SUBJ2_ITEM_COUNT;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_2)) // 上
-            {
-                s_subj2_sel = (s_subj2_sel + SUBJ2_ITEM_COUNT - 1) % SUBJ2_ITEM_COUNT;
-                s_need_redraw = 1;
-            }
-            else if (key_pressed(KEY_3)) // 确认
-            {
-                if (s_subj2_sel == 0)  // Record/Stop (toggle)
+                if (s_subj2_sel == 0)  // Record/Stop
                 {
-                    if (mst == MS_IDLE || mst == MS_DONE)
-                    {
+                    if (mst == MS_IDLE || mst == MS_DONE) {
                         Minesweep_StartRecord();
                     }
-                    else if (mst == MS_RECORDING)
-                    {
+                    else if (mst == MS_RECORDING) {
                         Minesweep_StopRecord();
                     }
                 }
                 else if (s_subj2_sel == 1)  // Mark Rotation
                 {
-                    if (mst == MS_RECORDING)
-                    {
+                    if (mst == MS_RECORDING) {
                         Minesweep_MarkRotation();
                     }
                 }
                 else if (s_subj2_sel == 2)  // Start Replay
                 {
-                    if (mst == MS_READY)
-                    {
+                    if (mst == MS_READY) {
                         Minesweep_StartReplay();
                     }
                 }
                 s_need_redraw = 1;
             }
-            else if (key_pressed(KEY_4)) // 返回 / 停止
+            else if (btn4) 
             {
-                if (mst == MS_RECORDING || mst == MS_STABILIZING ||
-                    mst == MS_DRIVING    || mst == MS_SPIN_ALIGN ||
-                    mst == MS_COASTING)
-                {
-                    Minesweep_Stop();
+                if (mst != MS_IDLE && mst != MS_DONE && mst != MS_READY) {
+                    Minesweep_Stop(); // 紧急停车
                 }
                 s_state = STATE_MAIN_MENU;
                 s_need_redraw = 1;
             }
             break;
         }
-
     }
 }

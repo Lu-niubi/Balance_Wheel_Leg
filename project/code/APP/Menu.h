@@ -34,9 +34,9 @@
 // #define MENU_STARTUP_PID_TUNE
 
 #include <stdint.h>
-
+#include "zf_common_typedef.h"
 void    Menu_Init(void);
 void    Menu_Process(void);
-uint8_t Menu_IsStartupDone(void);
+uint8 Menu_IsStartupDone(void);
 
 #endif /* _MENU_H_ */

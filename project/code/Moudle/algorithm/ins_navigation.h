@@ -21,6 +21,7 @@
 
 #ifndef _INS_NAVIGATION_H_
 #define _INS_NAVIGATION_H_
+#include "zf_common_typedef.h"
 
 #include <stdint.h>
 

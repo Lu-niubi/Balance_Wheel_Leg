@@ -2,6 +2,7 @@
 #define _SERVO_H_
 
 #include "zf_common_headfile.h"
+#include "zf_common_typedef.h"
 
 // -------------------------------------------------------------------------
 // 硬件引脚配置区 (根据实际接线修改此处)

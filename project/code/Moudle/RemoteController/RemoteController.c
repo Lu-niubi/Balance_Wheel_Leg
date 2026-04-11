@@ -9,8 +9,8 @@ typedef enum
 
 // 缓冲区和状态变量
 static rc_state_e parse_state = RC_STATE_WAIT_HEADER;
-static uint8_t rx_buffer[15]; // 存放一帧数据
-static uint8_t rx_index = 0;
+static uint8 rx_buffer[15]; // 存放一帧数据
+static uint8 rx_index = 0;
 
 // 初始化函数
 void RemoteController_Init(void)
@@ -24,7 +24,7 @@ void RemoteController_Init(void)
 }
 
 // 串口接收回调函数 (需要在中断里调用)
-void RemoteController_ReceiveByte(uint8_t temp_byte)
+void RemoteController_ReceiveByte(uint8 temp_byte)
 {
 
     // 从硬件 FIFO 读取一个字节
@@ -69,7 +69,7 @@ void RemoteController_ReceiveByte(uint8_t temp_byte)
                 // 更新标志，表示活着
                 IPCS->M1_Pub.xbox_updated = !IPCS->M1_Pub.xbox_updated;
                 // 把从 M1_Pub 开始的这块区域的缓存，同步到真实内存里
-                SCB_CleanDCache_by_Addr((uint32_t *)&IPCS->M1_Pub, sizeof(IPCS->M1_Pub));
+                SCB_CleanDCache_by_Addr((uint32 *)&IPCS->M1_Pub, sizeof(IPCS->M1_Pub));
 
                 // === 解析完成，重置状态 ===
                 parse_state = RC_STATE_WAIT_HEADER;

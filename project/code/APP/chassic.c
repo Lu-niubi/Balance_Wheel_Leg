@@ -27,13 +27,12 @@
 #include "IMU_Deal.h"
 #include <math.h>
 #include <stdio.h>
-
 // ─────────────────────────────────────────────────────────────────────────────
 //  科目1 内部状态
 // ─────────────────────────────────────────────────────────────────────────────
 
 static chassic_state_t s_state       = CHASSIC_IDLE;
-static uint32_t s_stabilize_cnt      = 0;    // STABILIZING 阶段计时 (1ms 计数)
+static uint32 s_stabilize_cnt      = 0;    // STABILIZING 阶段计时 (1ms 计数)
 static float    s_coast_accum_cm     = 0.0f; // COASTING 阶段累积距离 (cm)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,7 +138,7 @@ void Chassic_Tick_1ms(void)
 
         case CHASSIC_RECORDING:
         {
-            uint8_t full = INS_RecordTick(lrpm, rrpm, imu_sys.yaw);
+            uint8 full = INS_RecordTick(lrpm, rrpm, imu_sys.yaw);
             if (full)
             {
                 Chassic_StopRecord();
@@ -202,7 +201,7 @@ chassic_state_t Chassic_GetState(void)
     return s_state;
 }
 
-uint16_t Chassic_GetRecordCount(void)
+uint16 Chassic_GetRecordCount(void)
 {
     return INS_GetPointCount();
 }
@@ -212,7 +211,7 @@ float Chassic_GetRecordDistance(void)
     return INS_GetTotalDistance();
 }
 
-uint8_t Chassic_GetReplayProgress(void)
+uint8 Chassic_GetReplayProgress(void)
 {
     if (INS_GetPointCount() == 0) return 0;
 
@@ -222,5 +221,5 @@ uint8_t Chassic_GetReplayProgress(void)
     float current = g_ins.replay_distance_cm;
     float pct = (current / total) * 100.0f;
     if (pct > 100.0f) pct = 100.0f;
-    return (uint8_t)pct;
+    return (uint8)pct;
 }

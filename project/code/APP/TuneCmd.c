@@ -16,15 +16,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-
+#include "zf_common_typedef.h"
 #define TUNE_BUF_LEN 64
 
 static char    s_buf[TUNE_BUF_LEN];
-static uint8_t s_len = 0;
-static uint8_t s_cmd_ready = 0;
+static uint8 s_len = 0;
+static uint8 s_cmd_ready = 0;
 
 // ISR 里调用：喂一个字节
-void TuneCmd_Feed(uint8_t byte)
+void TuneCmd_Feed(uint8 byte)
 {
     if (byte == '\r') return;
     if (byte == '\n')

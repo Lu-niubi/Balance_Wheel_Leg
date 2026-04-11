@@ -23,10 +23,10 @@
 
 static ms_state_t  s_state           = MS_IDLE;
 static ms_marker_t s_markers[MS_MAX_MARKERS];
-static uint8_t     s_marker_count    = 0;
-static uint8_t     s_cur_marker      = 0;     // 下一个待检测的旋转点索引
+static uint8     s_marker_count    = 0;
+static uint8     s_cur_marker      = 0;     // 下一个待检测的旋转点索引
 static float       s_coast_accum_cm  = 0.0f;
-static uint32_t    s_stabilize_cnt   = 0;
+static uint32    s_stabilize_cnt   = 0;
 
 // SPIN_ALIGN 专用
 static float       s_heading_target  = 0.0f;  // Motor 连续 yaw 的旋转终点
@@ -62,17 +62,17 @@ static void set_motor_yaw_abs(float target_abs_yaw)
  */
 static float calc_spin_target(float spin_dist_cm)
 {
-    uint16_t pc = INS_GetPointCount();
+    uint16 pc = INS_GetPointCount();
     if (pc < 2)
         return Motor_Get_Yaw_Continuous();  // 无INS数据，原地不动
 
-    uint16_t idx_at = (uint16_t)(spin_dist_cm / INS_RECORD_SPACING_CM);
+    uint16 idx_at = (uint16)(spin_dist_cm / INS_RECORD_SPACING_CM);
     if (idx_at >= pc) idx_at = pc - 1;
 
     // 前后各取若干点（加边界保护）
-    uint16_t idx_b = (idx_at >= MS_SPIN_LOOK_BEFORE)
+    uint16 idx_b = (idx_at >= MS_SPIN_LOOK_BEFORE)
                      ? (idx_at - MS_SPIN_LOOK_BEFORE) : 0;
-    uint16_t idx_a = idx_at + MS_SPIN_LOOK_AHEAD;
+    uint16 idx_a = idx_at + MS_SPIN_LOOK_AHEAD;
     if (idx_a >= pc) idx_a = pc - 1;
 
     float yaw_b = g_ins.points[idx_b].yaw_deg;  // 旋转点前的航向
@@ -323,7 +323,7 @@ ms_state_t Minesweep_GetState(void)
     return s_state;
 }
 
-uint8_t Minesweep_GetMarkerCount(void)
+uint8 Minesweep_GetMarkerCount(void)
 {
     return s_marker_count;
 }
@@ -333,7 +333,7 @@ float Minesweep_GetRecordDistance(void)
     return INS_GetTotalDistance();
 }
 
-uint8_t Minesweep_GetReplayProgress(void)
+uint8 Minesweep_GetReplayProgress(void)
 {
     if (g_ins.point_count == 0) return 0;
 
@@ -342,5 +342,5 @@ uint8_t Minesweep_GetReplayProgress(void)
 
     float pct = (g_ins.replay_distance_cm / total_cm) * 100.0f;
     if (pct > 100.0f) pct = 100.0f;
-    return (uint8_t)pct;
+    return (uint8)pct;
 }

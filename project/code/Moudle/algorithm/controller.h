@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#include "zf_common_typedef.h"
 
 #ifndef abs
 #define abs(x) ((x > 0) ? x : -x)

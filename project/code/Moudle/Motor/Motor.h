@@ -4,6 +4,7 @@
 #include "stdint.h"
 #include "small_driver_uart_control.h"
 #include "controller.h"
+#include "zf_common_typedef.h"
 
 
 //中等高度下
@@ -68,7 +69,7 @@ PIDInstance* Motor_Get_Angle_PID(void);
 PIDInstance* Motor_Get_Gyro_PID(void);
 
 // 外部目标控制接口 (惯导/科目任务使用)
-void Motor_Set_Ext_Control(uint8_t enable);   // 1=启用外部目标, 0=恢复原有逻辑
+void Motor_Set_Ext_Control(uint8 enable);   // 1=启用外部目标, 0=恢复原有逻辑
 void Motor_Set_Ext_Speed(float speed_rpm);    // 设置目标速度 (RPM)
 void Motor_Set_Ext_Yaw(float yaw_deg);        // 设置目标航向 (度，连续累积值)
 float Motor_Get_Yaw_Continuous(void);         // 获取连续累积航向角 (无跳变)
@@ -91,8 +92,8 @@ void Motor_Set_Spin(int16_t spin_pwm);       // 非0=旋转模式(差速), 0=恢
 // 速度限制
 #define SB_SPEED_LIMIT      100.0f  // 单边桥速度限制 (RPM)
 
-extern uint8_t g_single_bridge_mode;         // 单边桥模式标志 (视觉模块设置)
-void Motor_Set_Single_Bridge_Mode(uint8_t enable); // 启用/关闭单边桥模式
+extern uint8 g_single_bridge_mode;         // 单边桥模式标志 (视觉模块设置)
+void Motor_Set_Single_Bridge_Mode(uint8 enable); // 启用/关闭单边桥模式
 void Motor_Roll_Loop(float imu_roll);              // Roll 补偿环 (10ms 调用)
 
 #ifdef USE_LQR_CONTROL

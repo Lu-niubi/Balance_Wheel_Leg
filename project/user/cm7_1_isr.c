@@ -37,6 +37,8 @@
 
 #include "zf_common_headfile.h"
 #include "RemoteController.h"
+#include "zf_common_typedef.h"
+
 // **************************** PIT中断函数 ****************************
 void pit0_ch0_isr()                    // 定时器通道 0 周期中断服务函数      
 {

@@ -2,6 +2,7 @@
 #define _GPS_H_
 
 #include "zf_common_headfile.h"
+#include "zf_common_typedef.h"
 
 // GPS 模块封装头文件
 // 底层驱动由 zf_device_gnss 提供，本模块提供业务层的初始化与数据访问接口

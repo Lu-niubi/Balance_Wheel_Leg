@@ -92,20 +92,20 @@ float Leg = 0;
 // ─── 外部可控的速度/航向目标 ───
 static float ext_speed_target  = 0.0f;   // 外部设定的目标速度 (RPM)，0 = 不动
 static float ext_yaw_target    = 0.0f;   // 外部设定的目标航向 (连续累积度)
-static uint8_t ext_control_enabled = 0;  // 1 = 使用外部目标, 0 = 使用原有逻辑(手柄)
+static uint8 ext_control_enabled = 0;  // 1 = 使用外部目标, 0 = 使用原有逻辑(手柄)
 
 // ─── 旋转模式 (绕过yaw PID，直接差速) ───
 static int16_t s_spin_pwm = 0;           // 非0=旋转模式，正值顺时针
 
 // ─── 单边桥模式 ───
-uint8_t g_single_bridge_mode = 0;        // 0=正常, 1=单边桥
+uint8 g_single_bridge_mode = 0;        // 0=正常, 1=单边桥
 static PIDInstance pid_roll;             // Roll 补偿 PID
 static float s_roll_leg_delta = 0.0f;   // Roll PID 输出的腿长差值 (mm)
 
 // ─── 连续yaw (无±180跳变) ───
 static float s_yaw_continuous = 0.0f;
 static float s_yaw_last       = 0.0f;
-static uint8_t s_yaw_init_done = 0;
+static uint8 s_yaw_init_done = 0;
 
 //-------------------------------------------------------------------------------------------------------------------
 //  内部变量
@@ -291,7 +291,7 @@ PIDInstance* Motor_Get_Angle_PID(void) { return &pid_angle; }
 PIDInstance* Motor_Get_Gyro_PID(void)  { return &pid_gyro;  }
 
 // ─── 外部目标控制接口 ───
-void Motor_Set_Ext_Control(uint8_t enable)
+void Motor_Set_Ext_Control(uint8 enable)
 {
     ext_control_enabled = enable;
     if (!enable)
@@ -327,7 +327,7 @@ void Motor_Set_Spin(int16_t spin_pwm)
 }
 
 // ─── 单边桥模式接口 ───
-void Motor_Set_Single_Bridge_Mode(uint8_t enable)
+void Motor_Set_Single_Bridge_Mode(uint8 enable)
 {
     g_single_bridge_mode = enable;
     if (!enable)
@@ -398,7 +398,7 @@ void Motor_LQR_Init(void)
 // -------------------------------------------------------------------------
 void Motor_LQR_Balance_Control(float leg_length, float imu_pitch, float imu_gyro, float imu_yaw_gyro)
 {
-    static uint8_t speed_loop_cnt = 0;
+    static uint8 speed_loop_cnt = 0;
     // 与 PID 模式对齐的信号流变量
     static float target_pitch_angle = 0.0f; // 速度环决定的目标 Pitch (轮腿解耦下锁死为 0)
 

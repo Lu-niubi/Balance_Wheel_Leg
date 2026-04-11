@@ -10,13 +10,14 @@
 #define _CHASSIC_H_
 
 #include "zf_common_headfile.h"
+#include "zf_common_typedef.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  参数宏
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define CHASSIC_REPLAY_SPEED    300.0f   // 回放时的固定目标速度 (RPM)
-#define CHASSIC_STABILIZE_MS    2000     // 回放前PID平稳等待时间 (ms)
+#define CHASSIC_REPLAY_SPEED    400.0f   // 回放时的固定目标速度 (RPM)
+#define CHASSIC_STABILIZE_MS    1000     // 回放前PID平稳等待时间 (ms)
 #define CHASSIC_COAST_CM        10.0f   // 回放完成后继续直行的距离 (cm = 10)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,12 +64,12 @@ void Chassic_Tick_1ms(void);
 chassic_state_t Chassic_GetState(void);
 
 /** 获取已记录点数 (菜单显示用) */
-uint16_t Chassic_GetRecordCount(void);
+uint16 Chassic_GetRecordCount(void);
 
 /** 获取已记录总距离 cm (菜单显示用) */
 float Chassic_GetRecordDistance(void);
 
 /** 获取回放进度百分比 0~100 */
-uint8_t Chassic_GetReplayProgress(void);
+uint8 Chassic_GetReplayProgress(void);
 
 #endif /* _CHASSIC_H_ */

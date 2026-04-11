@@ -24,15 +24,16 @@
 #define _MINESWEEP_H_
 
 #include "zf_common_headfile.h"
+#include "zf_common_typedef.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  参数宏
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define MS_REPLAY_SPEED         200.0f   // 直线段速度 (RPM)
-#define MS_STABILIZE_MS         2000     // 回放前 PID 平衡等待 (ms)
+#define MS_REPLAY_SPEED         400.0f   // 直线段速度 (RPM)
+#define MS_STABILIZE_MS         1000     // 回放前 PID 平衡等待 (ms)
 #define MS_COAST_CM             10.0f    // 终点后滑行距离 (cm)
-#define MS_SPIN_STEP_DEG_PER_MS 0.072f   // 斜坡生成器每 ms 最大步进 (度/ms = 72°/s)
+#define MS_SPIN_STEP_DEG_PER_MS 0.144f   // 斜坡生成器每 ms 最大步进 (度/ms =144°/s)
 #define MS_SPIN_LOOK_AHEAD      10       // 检测旋转方向时向后查的 INS 点数
 #define MS_SPIN_LOOK_BEFORE     3        // 检测旋转方向时向前查的 INS 点数
 #define MS_MAX_MARKERS          20       // 最多旋转标记点数
@@ -96,12 +97,12 @@ void Minesweep_Tick_1ms(void);
 ms_state_t Minesweep_GetState(void);
 
 /** 获取已标记的旋转点数 */
-uint8_t Minesweep_GetMarkerCount(void);
+uint8 Minesweep_GetMarkerCount(void);
 
 /** 获取录制总距离 (cm) */
 float Minesweep_GetRecordDistance(void);
 
 /** 获取回放进度百分比 0~100 */
-uint8_t Minesweep_GetReplayProgress(void);
+uint8 Minesweep_GetReplayProgress(void);
 
 #endif /* _MINESWEEP_H_ */

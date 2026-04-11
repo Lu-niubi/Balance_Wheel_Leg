@@ -6,6 +6,7 @@
 #include "controller.h"
 #include "math.h"
 #include "Servo.h"
+#include "zf_common_typedef.h"
 
 // 定义 PI
 #ifndef M_PI

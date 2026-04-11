@@ -3,6 +3,8 @@
 
 #include "zf_common_headfile.h"
 #include "KSCal.h"
+#include "zf_common_typedef.h"
+
 //==============================================================================
 // 核心参数
 //==============================================================================
@@ -37,7 +39,7 @@ typedef struct
     float q0, q1, q2, q3;
     float exInt, eyInt, ezInt;
     float yaw_offset;
-    uint8_t is_ready;
+    uint8 is_ready;
 
 } imu_fusion_t;
 
