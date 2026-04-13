@@ -37,6 +37,8 @@
 #define MS_SPIN_LOOK_AHEAD      10       // 检测旋转方向时向后查的 INS 点数
 #define MS_SPIN_LOOK_BEFORE     3        // 检测旋转方向时向前查的 INS 点数
 #define MS_MAX_MARKERS          20       // 最多旋转标记点数
+#define MS_MARKER_BRAKE_CM      40.0     // 标记点提前制动距离 (cm)，补偿电机惯性超调
+                                         // 速度越高此值越大；400RPM 时建议 4~8cm
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  数据结构

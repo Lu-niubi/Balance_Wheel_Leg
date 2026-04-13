@@ -240,8 +240,9 @@ void Minesweep_Tick_1ms(void)
             set_motor_yaw_abs(target_abs);
 
             // 检查是否到达下一个旋转标记点
+            // 提前 MS_MARKER_BRAKE_CM 发出停车，补偿 Motor 到实际静止的惯性滑行
             if (s_cur_marker < s_marker_count &&
-                g_ins.replay_distance_cm >= s_markers[s_cur_marker].dist_cm)
+                g_ins.replay_distance_cm >= s_markers[s_cur_marker].dist_cm - MS_MARKER_BRAKE_CM)
             {
                 float spin_dist = s_markers[s_cur_marker].dist_cm;
                 s_cur_marker++;
